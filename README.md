@@ -3,7 +3,7 @@
 Uses deepgram/whisper/custom models to create an LJSpeech dataset for voice model fine tuning.
 
 ### High level overview of the process
-
+##### This process will result in a metadata_train.csv, metadata_eval.csv and a folder of segmented wav files
 1. Create a deepgram transcription JSON.
 2. Convert the transcription JSON to an SRT file with timestamps.
 3. Segmentation using the SRT file while attempting to achieve a gaussian distribution of audio length.
