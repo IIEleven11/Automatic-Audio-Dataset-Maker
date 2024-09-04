@@ -10,6 +10,9 @@ def main():
     
     
     # Step 1: Transcribe audio
+    audio_dir_path = input("Enter the path to the directory containing audio files: ")
+    output_dir = input("Enter the path to the directory for saving transcriptions: ")
+    asyncio.run(transcribe_audio_main(audio_dir_path, output_dir))
     # Step 2: Convert JSON to SRT
     json_file_path = input("Enter the path to the JSON file to convert to SRT: ")
     srt_output_path = input("Enter the path to save the SRT file: ")
