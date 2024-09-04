@@ -22,6 +22,8 @@ def split_dataset(input_file_path, eval_percentage, train_file_path, eval_file_p
 def main():
     input_file_path = input("Enter the input .csv file path: ")
     eval_percentage = float(input("Enter the percentage of data to move to the evaluation set: "))
+    train_file_path = input("Enter the path to save the training metadata file: ")
+    eval_file_path = input("Enter the path to save the evaluation metadata file: ")
     split_dataset(input_file_path, eval_percentage, train_file_path, eval_file_path)
 
 if __name__ == "__main__":
