@@ -2,10 +2,7 @@ import pandas as pd
 import numpy as np
 
 # Function to split the dataset
-def split_dataset(input_file_path, eval_percentage):
-    # File paths for the end result metadata files
-    train_file_path = "/home/eleven/makeADataset/FINAL/metadata_train.csv"
-    eval_file_path = "/home/eleven/makeADataset/FINAL/metadata_eval.csv"
+def split_dataset(input_file_path, eval_percentage, train_file_path, eval_file_path):
 
     train_df = pd.read_csv(input_file_path, delimiter="|")
 
@@ -25,7 +22,7 @@ def split_dataset(input_file_path, eval_percentage):
 def main():
     input_file_path = input("Enter the input .csv file path: ")
     eval_percentage = float(input("Enter the percentage of data to move to the evaluation set: "))
-    split_dataset(input_file_path, eval_percentage)
+    split_dataset(input_file_path, eval_percentage, train_file_path, eval_file_path)
 
 if __name__ == "__main__":
     main()

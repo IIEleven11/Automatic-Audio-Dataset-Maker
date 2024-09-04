@@ -8,7 +8,7 @@ def main():
     eval_file_path = input("Enter the path to the evaluation file: ")
     eval_percentage = float(input("Enter the evaluation percentage (e.g., 0.2 for 20%): "))
 
-    split_dataset(train_file_path, eval_percentage)
+    split_dataset(train_file_path, eval_percentage, train_file_path, eval_file_path)
     audio_dir_path = input("Enter the path to the directory containing audio files: ")
     output_dir = input("Enter the path to the directory for saving transcriptions: ")
 
