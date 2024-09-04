@@ -1,13 +1,12 @@
-from Step1_Transcribe_Audio import transcribe_audio
-from Step2_Convert_JSON2SRT import convert_json_to_srt
-from Step3_Segment_Create_Metadata import segment_and_create_metadata
-from Step4_split_metadata import split_metadata
+
+import asyncio
+from Step1_Transcribe_Audio import transcribe_audio_main
 
 def main():
-    transcribe_audio()
-    convert_json_to_srt()
-    segment_and_create_metadata()
-    split_metadata()
+    audio_dir_path = input("Enter the path to the directory containing audio files: ")
+    output_dir = input("Enter the path to the directory for saving transcriptions: ")
+
+    asyncio.run(transcribe_audio_main(audio_dir_path, output_dir))
 
 if __name__ == "__main__":
     main()
