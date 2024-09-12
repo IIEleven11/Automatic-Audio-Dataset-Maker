@@ -21,7 +21,8 @@ os.makedirs(JSON_DIR_PATH, exist_ok=True)
 
 # Transcription options, edit as needed
 options = {
-    "model": "whisper",   
+    "model": "whisper-large", # adjust this if you want to use a different model that deepgram offers. (Whisper-large is more accurate but slower)
+    #"language": "es, en, ", change this if you need a different language. See: https://developers.deepgram.com/docs/deepgram-whisper-cloud#supported-languages for language codes
     "punctuate": True,
     "utterances": True,
     "paragraphs": True,
