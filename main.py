@@ -137,7 +137,21 @@ def segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR, PA
 
 # Function to split the dataset
 def split_dataset(PARENT_CSV, eval_percentage, train_dir_path, eval_dir_path):
-    train_df = pd.read_csv(PARENT_CSV, delimiter="|")
+    # List of encodings to try
+    encodings = ['utf-8', 'iso-8859-1', 'latin1', 'cp1252']
+    
+    train_df = None
+    for encoding in encodings:
+        try:
+            train_df = pd.read_csv(PARENT_CSV, delimiter="|", encoding=encoding)
+            print(f"Successfully read the CSV file using {encoding} encoding.")
+            break
+        except UnicodeDecodeError:
+            print(f"Failed to read the CSV file using {encoding} encoding. Trying next encoding...")
+    
+    if train_df is None:
+        print("Failed to read the CSV file with any of the attempted encodings.")
+        return
 
     num_rows_to_move = int(len(train_df) * eval_percentage / 100)
 
@@ -149,10 +163,12 @@ def split_dataset(PARENT_CSV, eval_percentage, train_dir_path, eval_dir_path):
     train_file_path = os.path.join(train_dir_path, "metadata_train.csv")
     eval_file_path = os.path.join(eval_dir_path, "metadata_eval.csv")
 
-    train_df.to_csv(train_file_path, sep="|", index=False)
-    eval_df.to_csv(eval_file_path, sep="|", index=False)
+    # Write CSV files with the successful encoding
+    train_df.to_csv(train_file_path, sep="|", index=False, encoding=encoding)
+    eval_df.to_csv(eval_file_path, sep="|", index=False, encoding=encoding)
 
     print(f"Moved {num_rows_to_move} rows from {PARENT_CSV} to {eval_file_path}")
+    print(f"Files written using {encoding} encoding.")
 
 # Main function to execute all steps
 async def main():
