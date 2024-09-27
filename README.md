@@ -7,7 +7,11 @@ Uses deepgram/whisper/custom models to create an LJSpeech dataset for voice mode
 1. conda create -n audiodatasetmaker python=3.10
 2. conda activate audiodatasetmaker
 3. pip install -r requirements.txt
-4. Get deepgram API key
+4. Install git-lifs
+   - Linux (Ubuntu): sudo apt-get install git-lfs 
+   - Windows: https://git-lfs.com/ download then:  git lfs install 
+5. Get a deepgram API key from https://deepgram.com/dashboard/signup
+6. Set HUGGINGFACE_TOKEN environment variable within your OS.
 
 ## Usage
 1. Put your audio files in the RAW_AUDIO folder

@@ -3,3 +3,28 @@ segmented_Audio/*
 raw_Audio/*
 converted_SRTs/*
 
+RAW_AUDIO/*
+JSON_DIR_PATH/*
+ignored
+.history
+__pycache__
+METADATA/*
+PARENT_CSV/*
+SRTS/*
+UNFILTERED_PARQUET/*
+WAVS/*
+
+# Except these 
+FINAL/.gitkeep
+segmented_Audio/.gitkeep
+raw_Audio/.gitkeep
+converted_SRTs/.gitkeep
+RAW_AUDIO/.gitkeep
+JSON_DIR_PATH/.gitkeep
+METADATA/.gitkeep
+PARENT_CSV/.gitkeep
+SRTS/.gitkeep
+UNFILTERED_PARQUET/.gitkeep
+WAVS/.gitkeep
+temp
+UNFILTERED_PARQUET/train

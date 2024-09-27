@@ -1,5 +1,5 @@
 aenum==3.1.15
-aiofiles==24.1.0
+aiofiles==23.2.1
 aiohttp==3.9.5
 aiosignal==1.3.1
 anyio==4.4.0
@@ -34,3 +34,11 @@ typing_extensions==4.12.2
 tzdata==2024.1
 websockets==12.0
 yarl==1.9.4
+datasets[audio]
+https://github.com/marianne-m/brouhaha-vad/archive/main.zip
+penn
+g2p
+demucs
+transformers
+accelerate
+bitsandbytes
