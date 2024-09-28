@@ -28,3 +28,6 @@ UNFILTERED_PARQUET/.gitkeep
 WAVS/.gitkeep
 temp
 UNFILTERED_PARQUET/train
+FILTERED_PARQUET/train-00000-of-00001.parquet
+PARENT_CSV/metadata.csv
+dataspeech/dataspeech.egg-info

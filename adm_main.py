@@ -1,19 +1,21 @@
 import os
-import subprocess
 import re
 import csv
 import json
 import asyncio
+import subprocess
 import numpy as np
 import pandas as pd
-import requests
-from huggingface_hub import HfApi
-from deepgram import Deepgram
 from pydub import AudioSegment
-from push_to_hub import push_dataset_to_hub
 from deepgram_captions import DeepgramConverter
-from datasets import DatasetDict, Audio
+from datasets import load_dataset, Audio, load_from_disk
+from datasets.features.features import require_decoding
+from datasets.download.streaming_download_manager import xgetsize
+from datasets.utils.py_utils import convert_file_size_to_int
+from datasets.table import embed_table_storage
+from tqdm import tqdm
 
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
 if not HUGGINGFACE_TOKEN:
@@ -22,27 +24,20 @@ if not HUGGINGFACE_TOKEN:
 DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
 if not DEEPGRAM_API_KEY:
     DEEPGRAM_API_KEY = input("Your Deepgram API key env variable isn't set. It's ok, you can provide it here. Enter your Deepgram API key: ")
-    
-    
-project_root = os.path.dirname(os.path.abspath(__file__))
-UNFILTERED_PARQUET_DIR = os.path.join(project_root, "UNFILTERED_PARQUET")
-os.makedirs(UNFILTERED_PARQUET_DIR, exist_ok=True)
 
-def collect_user_inputs():
-    hf_username = input("Enter your Hugging Face username: ")
-    repo_name = input("Enter the repository name: ")
-    full_repo_id = f"{hf_username}/{repo_name}"
-    skip_step1 = input("Skip Step 1 (Transcribe audio)? (y/n): ").lower() == 'y'
-    skip_step2 = input("Skip Step 2 (Convert JSON to SRT)? (y/n): ").lower() == 'y'
+
+def collect_USER_INPUTS():
+    HF_USERNAME = input("Enter your Hugging Face username: ")
+    REPO_NAME = input("Enter the repository name: ")
+    COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
+    SKIP_STEP_1_2 = input("Do you want to skip Step 1/2 (Transcribe and convert audio)? (y/n): ").lower() == 'y'
     SPEAKER_NAME = input("Enter the SPEAKER_NAME: ")
     EVAL_PERCENTAGE = float(input("Enter the EVAL_PERCENTAGE (percentage of data to move to evaluation set): "))
-
     inputs = {
-        'hf_username': hf_username,
-        'repo_name': repo_name,
-        'full_repo_id': full_repo_id,
-        'skip_step1': skip_step1,
-        'skip_step2': skip_step2,
+        'HF_USERNAME': HF_USERNAME,
+        'REPO_NAME': REPO_NAME,
+        'COMBINED_USERNAME_REPOID': COMBINED_USERNAME_REPOID,
+        'SKIP_STEP_1_2': SKIP_STEP_1_2,
         'SPEAKER_NAME': SPEAKER_NAME,
         'EVAL_PERCENTAGE': EVAL_PERCENTAGE,
         'HUGGINGFACE_TOKEN': HUGGINGFACE_TOKEN
@@ -50,23 +45,14 @@ def collect_user_inputs():
     return inputs
 
 
-def create_and_push_dataset(csv_file_path, repo_id, UNFILTERED_PARQUET_DIR):
-    dataset = DatasetDict.from_csv({"train": csv_file_path}, delimiter="|")
+def create_and_push_dataset(CSV_FILE_PATH, REPO_NAME):
+    # Load the dataset from CSV
+    dataset = load_dataset('csv', data_files={"train": CSV_FILE_PATH}, delimiter="|")
+    
+    # Cast the audio column to Audio type
     dataset = dataset.cast_column("audio", Audio(sampling_rate=44100))
-    
-    # Save a local copy in .arrow format
-    dataset.save_to_disk(UNFILTERED_PARQUET_DIR)
-    print(f"Local copy of dataset saved to {UNFILTERED_PARQUET_DIR} in .arrow format")
-    
-    # Convert to DataFrame and save as .parquet
-    df = dataset['train'].to_pandas()
-    parquet_file_path = os.path.join(UNFILTERED_PARQUET_DIR, "dataset.parquet")
-    df.to_parquet(parquet_file_path, engine='pyarrow')
-    print(f"Local copy of dataset saved to {parquet_file_path} in .parquet format")
-    
-    # Push to Hugging Face Hub
-    dataset.push_to_hub(repo_id, private=True)
-    print(f"Dataset successfully pushed to Hugging Face Hub under {repo_id}.")
+    dataset.push_to_hub(REPO_NAME, private=True)
+    print(f"Dataset successfully pushed to Hugging Face Hub under {REPO_NAME}.")
 
 
 async def transcribe_audio(file_path, dg_client, options, JSON_DIR_PATH):
@@ -89,11 +75,11 @@ async def transcribe_audio(file_path, dg_client, options, JSON_DIR_PATH):
         print(f"An error occurred while processing {file_path}: {e}")
 
 
-# convert JSON to SRT
 def format_time(seconds):
     milliseconds = int((seconds - int(seconds)) * 1000)
     time_str = f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02},{milliseconds:03}"
     return time_str
+
 
 def generate_srt(captions):
     srt_content = ""
@@ -146,7 +132,6 @@ def process_transcription(json_path, SRT_DIR_PATH):
     return processed_captions
 
 
-# segment audio and create metadata
 def srt_time_to_ms(srt_time):
     hours, minutes, seconds, milliseconds = map(int, re.split('[:,]', srt_time))
     return (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds
@@ -190,9 +175,118 @@ def segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR, PA
                     csv_writer.writerow([full_audio_path, text, SPEAKER_NAME])
             else:
                 print(f"No corresponding audio file found for {srt_file}")
-
     print("All segments have been processed and saved.")
     print(f"CSV file has been saved to {CSV_FILE_PATH}")
+
+
+def save_dataset_to_parquet(dataset_dict, data_dir):
+    for split_name, dataset in dataset_dict.items():
+        # Not sure if I will need this. I will leave it here for now.
+        decodable_columns = [
+            k for k, v in dataset.features.items() if require_decoding(v, ignore_decode_attribute=True)
+        ]
+        dataset_nbytes = dataset._estimate_nbytes()
+        max_shard_size = convert_file_size_to_int('500MB')
+        num_shards = int(dataset_nbytes / max_shard_size) + 1
+        num_shards = max(num_shards, 1)
+
+        shards = (
+            dataset.shard(num_shards=num_shards, index=i, contiguous=True) for i in range(num_shards)
+        )
+        def shards_with_embedded_external_files(shards):
+            for shard in shards:
+                fmt = shard.format
+                shard = shard.with_format("arrow")
+                shard = shard.map(
+                    embed_table_storage,
+                    batched=True,
+                    batch_size=1000,
+                    keep_in_memory=True,
+                )
+                shard = shard.with_format(**fmt)
+                yield shard
+
+        shards = shards_with_embedded_external_files(shards)
+        os.makedirs(data_dir, exist_ok=True)
+
+        for index, shard in tqdm(
+            enumerate(shards),
+            desc=f"Save the dataset shards for split '{split_name}'",
+            total=num_shards,
+        ):
+            shard_path = f"{data_dir}/{split_name}-{index:05d}-of-{num_shards:05d}.parquet"
+            shard.to_parquet(shard_path)
+        
+        print(f"Dataset split '{split_name}' saved as Parquet files in {data_dir}")
+
+
+def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
+    dataspeech_main_path = os.path.join(PROJECT_ROOT, "dataspeech", "dataspeech", "main.py")
+    env = os.environ.copy()
+    command = [
+        "python", dataspeech_main_path,
+        COMBINED_USERNAME_REPOID,
+        "--configuration", "default",
+        "--text_column_name", "text",
+        "--audio_column_name", "audio",
+        "--cpu_num_workers", "8",
+        "--repo_id", REPO_NAME,
+        "--apply_squim_quality_estimation",
+    ]
+
+    try:
+        print("Running initial processing and pushing to Hugging Face Hub...")
+        subprocess.run(command, check=True, env=env)
+        print("Initial processing completed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred during initial processing:")
+
+
+def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR):
+    metadata_to_text_script_path = os.path.join(
+        PROJECT_ROOT, "dataspeech", "scripts", "metadata_to_text.py"
+    )
+    env = os.environ.copy()
+    command = [
+        "python", metadata_to_text_script_path,
+        COMBINED_USERNAME_REPOID,
+        "--repo_id", REPO_NAME,
+        "--configuration", "default",
+        "--cpu_num_workers", "8",
+        "--path_to_bin_edges", bin_edges_path,
+        "--path_to_text_bins", text_bins_path,
+        "--avoid_pitch_computation",
+        "--apply_squim_quality_estimation",
+        "--output_dir", UNFILTERED_PARQUET_DIR
+    ]
+    try:
+        print("Running metadata to text processing...")
+        subprocess.run(command, check=True, env=env)
+        print("Metadata to text processing completed successfully.")
+
+        dataset = load_from_disk(UNFILTERED_PARQUET_DIR)
+        return dataset
+
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred during metadata to text processing:")
+        print(f"Command: {' '.join(e.cmd)}")
+        print(f"Return code: {e.returncode}")
+        print(f"Output: {e.output}")
+        print(f"Error: {e.stderr}")
+        return None
+
+
+def filter_parquet_files(UNFILTERED_PARQUET_DIR):
+    try:
+        print("Filtering Parquet files...")
+        subprocess.run(["python", "filter_parquet.py", UNFILTERED_PARQUET_DIR], check=True)
+        print("Filtering completed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred during filtering:")
+        print(f"Command: {e.cmd}")
+        print(f"Return code: {e.returncode}")
+        print(f"Output: {e.output}")
+        print(f"Error: {e.stderr}")
 
 
 def split_dataset(PARENT_CSV, eval_percentage, train_dir_path, eval_dir_path):
@@ -209,94 +303,31 @@ def split_dataset(PARENT_CSV, eval_percentage, train_dir_path, eval_dir_path):
     print(f"Moved {num_rows_to_move} rows from {PARENT_CSV} to {eval_file_path}")
 
 
-def run_initial_processing(full_repo_id, repo_name, HUGGINGFACE_TOKEN):
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    dataspeech_main_path = os.path.join(project_root, "dataspeech", "dataspeech", "main.py")
-    env = os.environ.copy()
-    env['HUGGINGFACE_TOKEN'] = HUGGINGFACE_TOKEN
-    
-    command = [
-        "python", dataspeech_main_path,
-        full_repo_id,
-        "--configuration", "default",
-        "--text_column_name", "text",
-        "--audio_column_name", "audio",
-        "--cpu_num_workers", "8",
-        "--repo_id", repo_name,
-        "--apply_squim_quality_estimation",
-    ]
-    
-    try:
-        print("Running initial processing and pushing to Hugging Face Hub...")
-        subprocess.run(command, check=True, env=env)
-        print("Initial processing completed successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred during initial processing:")
-
-
-def run_metadata_to_text(full_repo_id, repo_id, bin_edges_path, text_bins_path):
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    metadata_to_text_script_path = os.path.join(project_root, "dataspeech", "scripts", "metadata_to_text.py")
-    env = os.environ.copy()
-    env['HUGGINGFACE_TOKEN'] = HUGGINGFACE_TOKEN
-
-    command = [
-        "python", metadata_to_text_script_path,
-        full_repo_id,
-        "--repo_id", repo_id,
-        "--configuration", "default",
-        "--cpu_num_workers", "8",
-        "--path_to_bin_edges", bin_edges_path,
-        "--path_to_text_bins", text_bins_path,
-        "--avoid_pitch_computation",
-        "--apply_squim_quality_estimation",
-        "--output_dir", UNFILTERED_PARQUET_DIR
-    ]
-    try:
-        print("Running metadata to text processing...")
-        subprocess.run(command, check=True)
-        print("Metadata to text processing completed successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred during metadata to text processing:")
-        print(f"Command: {e.cmd}")
-        print(f"Return code: {e.returncode}")
-        print(f"Output: {e.output}")
-        print(f"Error: {e.stderr}")
-
-
-def filter_parquet_files():
-    try:
-        print("Filtering Parquet files...")
-        subprocess.run(["python", "filter_parquet.py"], check=True)
-        print("Filtering completed successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred during filtering:")
-        print(f"Command: {e.cmd}")
-        print(f"Return code: {e.returncode}")
-        print(f"Output: {e.output}")
-        print(f"Error: {e.stderr}")
-
+def find_parquet_files(directory):
+    return [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.parquet')]
 
 async def main():
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    AUDIO_DIR_PATH = os.path.join(project_root, "RAW_AUDIO")
-    JSON_DIR_PATH = os.path.join(project_root, "JSON_DIR_PATH")
-    SRT_DIR_PATH = os.path.join(project_root, "SRTS")
-    WAVS_DIR = os.path.join(project_root, "WAVS")
-    PARENT_CSV = os.path.join(project_root, "PARENT_CSV")
-    TRAIN_DIR_PATH = os.path.join(project_root, "METADATA")
-    EVAL_DIR_PATH = os.path.join(project_root, "METADATA")
-    user_inputs = collect_user_inputs()
-    hf_username = user_inputs['hf_username']
-    repo_name = user_inputs['repo_name']
-    full_repo_id = user_inputs['full_repo_id']
-    skip_step1 = user_inputs['skip_step1']
-    skip_step2 = user_inputs['skip_step2']
-    SPEAKER_NAME = user_inputs['SPEAKER_NAME']
-    EVAL_PERCENTAGE = user_inputs['EVAL_PERCENTAGE']
+    USER_INPUTS = collect_USER_INPUTS()
+    AUDIO_DIR_PATH = os.path.join(PROJECT_ROOT, "RAW_AUDIO")
+    JSON_DIR_PATH = os.path.join(PROJECT_ROOT, "JSON_DIR_PATH")
+    SRT_DIR_PATH = os.path.join(PROJECT_ROOT, "SRTS")
+    WAVS_DIR = os.path.join(PROJECT_ROOT, "WAVS")
+    PARENT_CSV = os.path.join(PROJECT_ROOT, "PARENT_CSV")
+    TRAIN_DIR_PATH = os.path.join(PROJECT_ROOT, "METADATA")
+    EVAL_DIR_PATH = os.path.join(PROJECT_ROOT, "METADATA")
+    CSV_FILE_PATH = os.path.join(PARENT_CSV, "metadata.csv")
+    UNFILTERED_PARQUET_DIR = os.path.join(PROJECT_ROOT, "UNFILTERED_PARQUET")
+    FILTERED_PARQUET = os.path.join(PROJECT_ROOT, "FILTERED_PARQUET")
+    REPO_NAME = USER_INPUTS['REPO_NAME']
+    HF_USERNAME = USER_INPUTS['HF_USERNAME']
+    SKIP_STEP_1_2 = USER_INPUTS['SKIP_STEP_1_2']
+    SPEAKER_NAME = USER_INPUTS['SPEAKER_NAME']
+    EVAL_PERCENTAGE = USER_INPUTS['EVAL_PERCENTAGE']
+    COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
+
 
     # Steps 1 and 2 (transcribe audio and convert JSON to SRT)
-    if not skip_step1:
+    if not SKIP_STEP_1_2:
         print("Skipping Step 1: Transcribe audio")
         json_files = [f for f in os.listdir(JSON_DIR_PATH) if f.endswith('.json')]
 
@@ -317,22 +348,58 @@ async def main():
     # Step 3: Segment audio and create metadata
     segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR, PARENT_CSV, SPEAKER_NAME)
 
+
     # Step 4: Split dataset
-    PARENT_CSV_PATH = os.path.join(PARENT_CSV, "metadata.csv")
-    split_dataset(PARENT_CSV_PATH, EVAL_PERCENTAGE, TRAIN_DIR_PATH, EVAL_DIR_PATH)
-
-
-    create_and_push_dataset(PARENT_CSV_PATH, full_repo_id, UNFILTERED_PARQUET_DIR)
+    split_dataset(CSV_FILE_PATH, EVAL_PERCENTAGE, TRAIN_DIR_PATH, EVAL_DIR_PATH)
     
-    run_initial_processing(user_inputs['full_repo_id'], user_inputs['repo_name'], user_inputs['HUGGINGFACE_TOKEN'])
+    
+    # Push the dataset to Hugging Face Hub
+    create_and_push_dataset(CSV_FILE_PATH, REPO_NAME)
 
-    # Run metadata to text processing
-    bin_edges_path = os.path.join(project_root, "dataspeech", "examples", "tags_to_annotations", "v02_bin_edges.json")
-    text_bins_path = os.path.join(project_root, "dataspeech", "examples", "tags_to_annotations", "v02_text_bins.json")
-    run_metadata_to_text(full_repo_id, repo_name, bin_edges_path, text_bins_path)
 
-    # Filter the dataset
-    filter_parquet_files()
+    # Step 5: Run initial processing
+    run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME)
+
+
+    # Step 6: Run metadata_to_text
+    bin_edges_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_bin_edges.json")
+    text_bins_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_text_bins.json")
+    run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
+    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME,  bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
+    if dataset is not None:
+        save_dataset_to_parquet(dataset, UNFILTERED_PARQUET_DIR)
+    else:
+        print("Failed to process metadata to text. Skipping Parquet file creation.")
+
+
+    # Step 7: Filter the dataset
+    try:
+        print("Starting Step 7: Filter the dataset")
+        filter_parquet_files(UNFILTERED_PARQUET_DIR)
+        print("Step 7 completed: Dataset filtered successfully.")
+    except Exception as e:
+        print(f"An error occurred in Step 7: {e}")
+
+
+    # Step 8: Push the filtered dataset to Hugging Face Hub
+    parquet_files = find_parquet_files(FILTERED_PARQUET)
+    if not parquet_files:
+        raise FileNotFoundError(f"No Parquet files found in {FILTERED_PARQUET}")
+
+    # Create a dictionary mapping split names to file lists (Not using splits but its here if you need it)
+    data_files = {}
+    for file in parquet_files:
+        split_name = os.path.basename(file).split('-')[0]
+        if split_name not in data_files:
+            data_files[split_name] = []
+        data_files[split_name].append(file)
+
+    dataset = load_dataset('parquet', data_files=data_files)
+    dataset.push_to_hub(REPO_NAME, private=True)
+    
+    print(f"Dataset successfully pushed to Hugging Face Hub under {COMBINED_USERNAME_REPOID}.")
+    print("Step 8 completed: Filtered dataset pushed to Hugging Face Hub successfully.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
