@@ -36,7 +36,7 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
    Example:
    1. Enter your Hugging Face username: __```IIEleven11```__
    2. Enter the repository name: __```MyRepositoryName```__
-   3. Do you want to skip Step 1/2 (Transcribe and convert audio)? (y/n): __```y```__
+   3. Do you want to skip Step 1/2 (Transcribe and convert audio)? (y/n): __```n```__
    4. Enter the SPEAKER_NAME: __```Steve```__
    5. Enter the EVAL_PERCENTAGE (percentage of data to move to evaluation set): __```10```__
 
@@ -58,6 +58,7 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
    - [ ] StyleTTS2
    - [ ] Parler-TTS
    - [ ] FishSpeech
+   - [ ] Tortoise-TTS
 
 
 
