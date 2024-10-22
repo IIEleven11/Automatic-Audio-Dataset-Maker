@@ -260,7 +260,7 @@ def create_and_push_dataset(PARENT_CSV, COMBINED_USERNAME_REPOID):
 
 
 def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
-    dataspeech_main_path = os.path.join(PROJECT_ROOT, "dataspeech", "dataspeech", "main.py")
+    dataspeech_main_path = os.path.join(PROJECT_ROOT, "dataspeech", "main.py")
     env = os.environ.copy()
     command = [
         "python", dataspeech_main_path,
