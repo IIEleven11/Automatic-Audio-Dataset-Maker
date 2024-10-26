@@ -5,7 +5,7 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
 **__Goal__**: Automate the creation and curation of an audio dataset for fine-tuneing/training text-to-speech models.
 
 ## What this project does: ##
-   1. Transcription using whisper/deepgram. I am using their API because it is significantly faster. Using whipser locally can be an option to.
+   1. Transcription using whisper/deepgram. I am using their API because it is significantly faster. Using whipser is now an option.
    2. Segmentation and forcing a gaussian distribution of text/audio data segments between 1.2-15 seconds long.
    3. Creation of metadata according to the segmented audio. This is the transcriptions to pair with the audio files.
    4. Analyzing the audio using the SI-SDR, PESQ, STOI, c50, and SNR metrics.
@@ -30,7 +30,7 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
 8. In your terminal login to Hugging Face Hub by typing: ```huggingface-cli login```
 
 ## Usage
-1. Put your audio files in the RAW_AUDIO folder
+1. Put your audio files in the RAW_AUDIO folder. They should be 44.1hz, mono, and 16bit PCM. (These are not absolute values. I am just setting something as a default for any beginners to follow)
 2. Run python adm_main.py and follow the prompts in the terminal
    
    Example:
@@ -41,7 +41,7 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
    5. Enter the EVAL_PERCENTAGE (percentage of data to move to evaluation set): __```10```__
 
    #### Note: 
-      - Step1 (transcription) I am using deepgram's API. They provide each new user with a free $200 credit. They have much faster GPU's and can handle transcribing a large dataset quickly. Using their API I am able to run through this entire script on a 10 hour dataset in under 2 hours. 
+      - Step1 (transcription) using deepgram's API or local whisperASR. They provide each new user with a free $200 credit. They have much faster GPU's and can handle transcribing a large dataset quickly. Using their API I am able to run through this entire script on a 10 hour dataset in under 2 hours. 
       - This process will filter out any data it deems as not suitable for training. I suggest doing any denoising or editing of the audio before hand.
       - You can choose to skip the transcription step if you have your own. Make sure you place a metadata.csv, metadata_train.csv, and metadata_eval.csv in the appropriate folders.
       - Analyzing and computing the audio metrics can be a bit GPU intensive. My RTX 3090 can handle it without a problem. I could see less capable hardware failing during this step. If thats the case I would recommend using a cloud GPU instance.
