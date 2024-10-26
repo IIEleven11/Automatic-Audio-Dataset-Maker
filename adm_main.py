@@ -4,8 +4,8 @@ import csv
 import json
 import time
 import torch
-import whisper
 import asyncio
+import whisper
 import subprocess
 import numpy as np
 import pandas as pd
@@ -25,8 +25,6 @@ from datasets.download.streaming_download_manager import xgetsize
 from datasets import load_dataset, Audio, load_from_disk, DatasetDict
 
 
-
-
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
@@ -36,7 +34,7 @@ if not HUGGINGFACE_TOKEN:
 DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
 if not DEEPGRAM_API_KEY:
     DEEPGRAM_API_KEY = input("Enter your Deepgram API key: ")
-    
+
 dg_client = Deepgram(DEEPGRAM_API_KEY)
 options = {
     "model": "whisper",
@@ -52,22 +50,42 @@ def collect_USER_INPUTS():
     HF_USERNAME = input("Enter your Hugging Face username: ")
     REPO_NAME = input("Enter the repository name: ")
     COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
-    
-    # Add transcription choice
+
     while True:
         TRANSCRIPTION_CHOICE = input("Choose transcription method (1 for local Whisper, 2 for Deepgram API): ").strip()
         if TRANSCRIPTION_CHOICE in ['1', '2']:
             break
         print("Invalid choice. Please enter 1 or 2.")
+
+    NUM_GPUS = None
+    if TRANSCRIPTION_CHOICE == '1':
+        available_gpus = torch.cuda.device_count()
+        if available_gpus > 0:
+            print(f"\nDetected {available_gpus} GPU(s)")
+            while True:
+                gpu_input = input(f"Enter number of GPUs to use (1-{available_gpus}, or press Enter for all): ").strip()
+                if not gpu_input:
+                    NUM_GPUS = available_gpus
+                    break
+                try:
+                    num = int(gpu_input)
+                    if 1 <= num <= available_gpus:
+                        NUM_GPUS = num
+                        break
+                    print(f"Please enter a number between 1 and {available_gpus}")
+                except ValueError:
+                    print("Please enter a valid number")
+
+    SKIP_STEP_1_2 = input("Do you want to SKIP audio transcription? (y/n): ").lower() == 'y'
+    SPEAKER_NAME = input("Enter the name of the person speaking in the audio: ")
+    EVAL_PERCENTAGE = float(input("Enter the percentage of data to move to evaluation set (10-15%): "))
     
-    SKIP_STEP_1_2 = input("Do you want SKIP audio transcription? (y/n): ").lower() == 'y'
-    SPEAKER_NAME = input("Enter the name of the person speaking in the audio.: ")
-    EVAL_PERCENTAGE = float(input("Enter the percentage of data to move to evaluation set. Normal values are between 10-15%): "))
     inputs = {
         'HF_USERNAME': HF_USERNAME,
         'REPO_NAME': REPO_NAME,
         'COMBINED_USERNAME_REPOID': COMBINED_USERNAME_REPOID,
         'TRANSCRIPTION_CHOICE': TRANSCRIPTION_CHOICE,
+        'NUM_GPUS': NUM_GPUS,
         'SKIP_STEP_1_2': SKIP_STEP_1_2,
         'SPEAKER_NAME': SPEAKER_NAME,
         'EVAL_PERCENTAGE': EVAL_PERCENTAGE,
@@ -111,20 +129,53 @@ def format_time(seconds):
     time_str = f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02},{milliseconds:03}"
     return time_str
 
-def transcribe_with_whisper(audio_file_path, output_dir):
+
+def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
     """
-    Transcribe audio using local Whisper model.
+    Transcribe audio using local Whisper model with multi-GPU support.
+    
+    Args:
+        audio_file_path (str): Path to the audio file
+        output_dir (str): Directory to save the SRT files
+        num_gpus (int, optional): Number of GPUs to use. If None, use all available GPUs.
     """
     try:
+        import torch
+        import torch.nn as nn
+        from torch.nn.parallel import DataParallel
+        
+        # Check available GPUs
+        available_gpus = torch.cuda.device_count()
+        if available_gpus == 0:
+            print("No GPUs found. Using CPU...")
+            device = "cpu"
+        else:
+            if num_gpus is None or num_gpus > available_gpus:
+                num_gpus = available_gpus
+            print(f"Using {num_gpus} GPU(s) for transcription...")
+            device = "cuda"
+
+        # Load the Whisper model
         # Load the Whisper model
         model = whisper.load_model("large-v3")
         
-        # Transcribe the audio
+        if device == "cuda" and num_gpus > 1:
+            # Move model to GPU and wrap with DataParallel
+            model = model.to(device)
+            model = DataParallel(model, device_ids=list(range(num_gpus)))
+            
+            # Optimize memory usage
+            torch.cuda.empty_cache()
+            torch.backends.cudnn.benchmark = True
+        else:
+            model = model.to(device)
+
         result = model.transcribe(
             audio_file_path,
             language="en",
             word_timestamps=True,
-            verbose=True
+            verbose=True,
+            fp16=True
         )
         
         # Generate SRT format
@@ -143,6 +194,11 @@ def transcribe_with_whisper(audio_file_path, output_dir):
             f.write(srt_content)
             
         print(f"Transcription saved to {srt_file_path}")
+        
+        # Clean up GPU memory
+        if device == "cuda":
+            torch.cuda.empty_cache()
+            
         return True
         
     except Exception as e:
@@ -494,7 +550,7 @@ async def main():
         if USER_INPUTS['TRANSCRIPTION_CHOICE'] == '1':
             print("Using local Whisper model for transcription...")
             for audio_file in tqdm(audio_files, desc="Transcribing with Whisper"):
-                transcribe_with_whisper(audio_file, SRT_DIR_PATH)
+                transcribe_with_whisper(audio_file, SRT_DIR_PATH, num_gpus=USER_INPUTS['NUM_GPUS'])
         else:
             print("Using Deepgram API for transcription...")
             for audio_file in audio_files:
