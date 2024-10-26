@@ -2,24 +2,29 @@ import os
 import re
 import csv
 import json
+import time
+import torch
+import whisper
 import asyncio
 import subprocess
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from deepgram import Deepgram
 import soundfile as sf
+from pathlib import Path
+from deepgram import Deepgram
 from pydub import AudioSegment
 import tools.constants as constants
 from datasets.table import embed_table_storage
 from deepgram_captions import DeepgramConverter
-from datasets.features.features import require_decoding
+from requests.exceptions import RequestException
 from tools.normalize_folder import normalize_audio
+from datasets.features.features import require_decoding
 from datasets.utils.py_utils import convert_file_size_to_int
 from datasets.download.streaming_download_manager import xgetsize
 from datasets import load_dataset, Audio, load_from_disk, DatasetDict
-import time
-from requests.exceptions import RequestException
+
+
 
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -47,6 +52,14 @@ def collect_USER_INPUTS():
     HF_USERNAME = input("Enter your Hugging Face username: ")
     REPO_NAME = input("Enter the repository name: ")
     COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
+    
+    # Add transcription choice
+    while True:
+        TRANSCRIPTION_CHOICE = input("Choose transcription method (1 for local Whisper, 2 for Deepgram API): ").strip()
+        if TRANSCRIPTION_CHOICE in ['1', '2']:
+            break
+        print("Invalid choice. Please enter 1 or 2.")
+    
     SKIP_STEP_1_2 = input("Do you want SKIP audio transcription? (y/n): ").lower() == 'y'
     SPEAKER_NAME = input("Enter the name of the person speaking in the audio.: ")
     EVAL_PERCENTAGE = float(input("Enter the percentage of data to move to evaluation set. Normal values are between 10-15%): "))
@@ -54,6 +67,7 @@ def collect_USER_INPUTS():
         'HF_USERNAME': HF_USERNAME,
         'REPO_NAME': REPO_NAME,
         'COMBINED_USERNAME_REPOID': COMBINED_USERNAME_REPOID,
+        'TRANSCRIPTION_CHOICE': TRANSCRIPTION_CHOICE,
         'SKIP_STEP_1_2': SKIP_STEP_1_2,
         'SPEAKER_NAME': SPEAKER_NAME,
         'EVAL_PERCENTAGE': EVAL_PERCENTAGE,
@@ -97,6 +111,43 @@ def format_time(seconds):
     time_str = f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02},{milliseconds:03}"
     return time_str
 
+def transcribe_with_whisper(audio_file_path, output_dir):
+    """
+    Transcribe audio using local Whisper model.
+    """
+    try:
+        # Load the Whisper model
+        model = whisper.load_model("large-v3")
+        
+        # Transcribe the audio
+        result = model.transcribe(
+            audio_file_path,
+            language="en",
+            word_timestamps=True,
+            verbose=True
+        )
+        
+        # Generate SRT format
+        srt_content = ""
+        for i, segment in enumerate(result["segments"], 1):
+            start_time = format_time(segment["start"])
+            end_time = format_time(segment["end"])
+            text = segment["text"].strip()
+            srt_content += f"{i}\n{start_time} --> {end_time}\n{text}\n\n"
+        
+        # Save to SRT file
+        base_name = os.path.splitext(os.path.basename(audio_file_path))[0]
+        srt_file_path = os.path.join(output_dir, f"{base_name}.srt")
+        
+        with open(srt_file_path, "w", encoding="utf-8") as f:
+            f.write(srt_content)
+            
+        print(f"Transcription saved to {srt_file_path}")
+        return True
+        
+    except Exception as e:
+        print(f"Error transcribing {audio_file_path}: {e}")
+        return False
 
 def generate_srt(captions):
     srt_content = ""
@@ -421,57 +472,60 @@ async def main():
     # Steps 1 and 2 (transcribe audio and convert JSON to SRT)
     if not SKIP_STEP_1_2:
         print("Starting Step 1: Transcribe audio")
-
-        # Transcribe audio files
+        
+        os.makedirs(SRT_DIR_PATH, exist_ok=True)
+        
         audio_files = [os.path.join(AUDIO_DIR_PATH, f) for f in os.listdir(AUDIO_DIR_PATH) if f.endswith('.wav')]
-        for audio_file in audio_files:
-            await transcribe_audio(audio_file, dg_client, options, JSON_DIR_PATH)
+
+        if USER_INPUTS['TRANSCRIPTION_CHOICE'] == '1':
+            print("Using local Whisper model for transcription...")
+            for audio_file in tqdm(audio_files, desc="Transcribing with Whisper"):
+                transcribe_with_whisper(audio_file, SRT_DIR_PATH)
+        else:
+            print("Using Deepgram API for transcription...")
+            for audio_file in audio_files:
+                await transcribe_audio(audio_file, dg_client, options, JSON_DIR_PATH)
+                
+            print("Converting JSON responses to SRT format...")
+            json_files = [f for f in os.listdir(JSON_DIR_PATH) if f.endswith('.json')]
+            
+            for json_file in json_files:
+                json_path = os.path.join(JSON_DIR_PATH, json_file)
+                processed_captions = process_transcription(json_path, SRT_DIR_PATH)
+                if processed_captions:
+                    srt_content = generate_srt(processed_captions)
+                    base_name = os.path.splitext(json_file)[0]
+                    srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
+                    with open(srt_file_path, "w") as srt_file:
+                        srt_file.write(srt_content)
+                    print(f"SRT file saved to {srt_file_path}")
+                else:
+                    print(f"No captions were generated for {json_file}")
 
         print("Step 1 completed: Audio transcription finished")
 
-        print("Starting Step 2: Convert JSON to SRT")
-        json_files = [f for f in os.listdir(JSON_DIR_PATH) if f.endswith('.json')]
-
-        for json_file in json_files:
-            json_path = os.path.join(JSON_DIR_PATH, json_file)
-            processed_captions = process_transcription(json_path, SRT_DIR_PATH)
-            if processed_captions:
-                srt_content = generate_srt(processed_captions)
-                base_name = os.path.splitext(json_file)[0]
-                srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
-                with open(srt_file_path, "w") as srt_file:
-                    srt_file.write(srt_content)
-                print(f"SRT file saved to {srt_file_path}")
-            else:
-                print(f"No captions were generated for {json_file}")
-
-        print("Step 2 completed: JSON to SRT conversion finished")
-    else:
-        print("Skipping Steps 1 and 2 as requested.")
-
 
     # Step 3: Segment audio and create metadata
+    print("Starting Step 3: Segment audio and create metadata")
     segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR_PREDENOISE, PARENT_CSV, SPEAKER_NAME)
+    print("Step 3 completed: Audio segmented and metadata created")
 
-
-    # Step 4: Split dataset
+    # Step 4: Split dataset/ denoise/ normalize/ push to hub
+    print("Starting Step 4: Split dataset, denoise, and push to hub")
     split_dataset(CSV_FILE_PATH, EVAL_PERCENTAGE, TRAIN_DIR_PATH, EVAL_DIR_PATH)
 
-
-    # In the main function
     denoise_and_normalize(WAVS_DIR_PREDENOISE, WAVS_DIR_POSTDENOISE, COMBINED_USERNAME_REPOID)
     update_csv_file_paths(CSV_FILE_PATH, WAVS_DIR_PREDENOISE, WAVS_DIR_POSTDENOISE)
-
-
-    # Step 4.5 Push the dataset to Hugging Face Hub
     create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID)
-
+    print("Step 4 completed: Dataset split, denoised, normalized, and pushed to the HuggingfaceHub")
 
     # Step 5: Run initial processing
+    print("Starting Step 5: Run initial processing")
     run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME)
-
+    print("Step 5 completed: Initial processing completed successfully")
 
     # Step 6: Run metadata_to_text
+    print("Starting Step 6: Run metadata_to_text")
     bin_edges_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_bin_edges.json")
     text_bins_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_text_bins.json")
     run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
@@ -479,24 +533,25 @@ async def main():
     dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME,  bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
     if dataset is not None:
         save_dataset_to_parquet(dataset, UNFILTERED_PARQUET_DIR)
+        print("Step 6 completed: Metadata processed to text and saved as Parquet files.")
     else:
         print("Failed to process metadata to text. Skipping Parquet file creation.")
 
 
     # Step 7: Filter the dataset
     try:
-        print("Starting Step 5: Filter the dataset")
+        print("Starting Step 7: Filter the dataset")
         filter_parquet_files(UNFILTERED_PARQUET_DIR)
-        print("Step 5 completed: Dataset filtered successfully.")
+        print("Step 7 completed: Dataset filtered successfully.")
     except Exception as e:
         print(f"An error occurred in Step 5: {e}")
 
 
-    # Step 6: Push the filtered dataset to Hugging Face Hub
+    # Step 8: Push the filtered dataset to Hugging Face Hub
     dataset = load_dataset(FILTERED_PARQUET_DIR)
     dataset = dataset.cast_column("audio", Audio(sampling_rate=44100))
     
-    print("Pushing filtered dataset to Hugging Face Hub...")
+    print("Starting step 8, pushing filtered dataset to Hugging Face Hub...")
     push_to_hub_with_retry(dataset, COMBINED_USERNAME_REPOID)
     print(f"Filtered dataset successfully pushed to Hugging Face Hub under {COMBINED_USERNAME_REPOID}.")
 
