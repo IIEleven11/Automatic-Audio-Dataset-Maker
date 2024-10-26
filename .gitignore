@@ -1,17 +1,5 @@
 .history
-WAVS_DIR_PREDENOISE/*
-WAVS_DIR_POSTDENOISE/*
-zzzzzzzzz/*
-RAW_AUDIO/*
-FILTERED_PARQUET/*
-METADATA/*
-METADATA/*
-PARENT_CSV/*
-SRTS/*
-tools/tempfolder/*
-UNFILTERED_PARQUET/*
-UNFILTERED_PARQUET/train/*
-
+zzzzzzzzz
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
