@@ -1,0 +1,12 @@
+{
+    "speaker_rate_bins":
+        ["very slowly", "slowly", "slightly slowly", "moderate speed", "slightly fast", "fast", "very fast"],
+    "snr_bins":
+        ["very noisy", "noisy", "slightly noisy", "balanced in clarity", "slightly clean", "clean", "very clean"],
+    "reverberation_bins":
+        ["very distant-sounding", "distant-sounding", "slightly distant-sounding", "slightly close-sounding", "very close-sounding"],
+    "utterance_level_std":
+        ["very monotone", "monotone", "slightly expressive and animated", "expressive and animated", "very expressive and animated"],
+    "speaker_level_pitch_bins":
+        ["very low-pitch", "low-pitch", "slightly low-pitch", "moderate pitch", "slightly high-pitch", "high-pitch", "very high-pitch"]
+}
