@@ -548,10 +548,10 @@ async def main():
 
 
     # Step 8: Push the filtered dataset to Hugging Face Hub
+    print("Starting step 8, pushing filtered dataset to Hugging Face Hub...")
     dataset = load_dataset(FILTERED_PARQUET_DIR)
     dataset = dataset.cast_column("audio", Audio(sampling_rate=44100))
-    
-    print("Starting step 8, pushing filtered dataset to Hugging Face Hub...")
+
     push_to_hub_with_retry(dataset, COMBINED_USERNAME_REPOID)
     print(f"Filtered dataset successfully pushed to Hugging Face Hub under {COMBINED_USERNAME_REPOID}.")
 
