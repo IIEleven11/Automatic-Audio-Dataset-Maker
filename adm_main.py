@@ -369,14 +369,28 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
 def filter_parquet_files(UNFILTERED_PARQUET_DIR):
     try:
         print("Filtering Parquet files...")
-        subprocess.run(["python", "filter_parquet.py", UNFILTERED_PARQUET_DIR], check=True)
-        print("Filtering completed successfully.")
+        result = subprocess.run(["python", "filter_parquet.py", UNFILTERED_PARQUET_DIR], capture_output=True, text=True, check=True)
+        print(result.stdout)
+        
+        if "No rows passed the filters" in result.stdout:
+            print("WARNING: No audio files passed the quality filters.")
+            return False
+        else:
+            print("Filtering completed successfully.")
+            return True
     except subprocess.CalledProcessError as e:
         print(f"An error occurred during filtering:")
         print(f"Command: {e.cmd}")
         print(f"Return code: {e.returncode}")
-        print(f"Output: {e.output}")
+        print(f"Output: {e.stdout}")
         print(f"Error: {e.stderr}")
+        return False
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred during filtering:")
+        print(f"Command: {e.cmd}")
+        print(f"Return code: {e.returncode}")
+        print(f"Error: {e.stderr}")
+        return False
 
 
 def denoise_and_normalize(input_folder, output_folder, dataset_name):
@@ -385,7 +399,7 @@ def denoise_and_normalize(input_folder, output_folder, dataset_name):
     print("Starting denoising and normalizing process...")
     os.makedirs(output_folder, exist_ok=True)
     wav_files = [f for f in os.listdir(input_folder) if f.endswith('.wav')]
-    
+
     for wav_file in tqdm(wav_files, desc="Processing audio files"):
         input_path = os.path.join(input_folder, wav_file)
         output_path = os.path.join(output_folder, wav_file)
@@ -541,15 +555,34 @@ async def main():
     # Step 7: Filter the dataset
     try:
         print("Starting Step 7: Filter the dataset")
-        filter_parquet_files(UNFILTERED_PARQUET_DIR)
+        data_passed_filters = filter_parquet_files(UNFILTERED_PARQUET_DIR)
+        if not data_passed_filters:
+            print("ERROR: No audio files passed the quality filters.")
+            print("Please manually review and improve your audio files, or remove low-quality files.")
+            print("Exiting the script.")
+            return
         print("Step 7 completed: Dataset filtered successfully.")
     except Exception as e:
-        print(f"An error occurred in Step 5: {e}")
+        print(f"An error occurred in Step 7: {e}")
+        return 
 
 
     # Step 8: Push the filtered dataset to Hugging Face Hub
     print("Starting step 8, pushing filtered dataset to Hugging Face Hub...")
-    dataset = load_dataset(FILTERED_PARQUET_DIR)
+    print(f"Contents of {FILTERED_PARQUET_DIR}:")
+    for file in os.listdir(FILTERED_PARQUET_DIR):
+        print(file)
+    # Load the dataset
+    if os.path.exists(os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet")):
+        # If there's a single parquet file
+        dataset = load_dataset("parquet", data_files=os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet"))
+    elif os.path.exists(os.path.join(FILTERED_PARQUET_DIR, "train")):
+        # If there's a 'train' directory
+        dataset = load_dataset("parquet", data_dir=FILTERED_PARQUET_DIR)
+    else:
+        # If there are multiple parquet files in the root directory
+        data_files = [os.path.join(FILTERED_PARQUET_DIR, f) for f in os.listdir(FILTERED_PARQUET_DIR) if f.endswith('.parquet')]
+        dataset = load_dataset("parquet", data_files=data_files)
     dataset = dataset.cast_column("audio", Audio(sampling_rate=44100))
 
     push_to_hub_with_retry(dataset, COMBINED_USERNAME_REPOID)
