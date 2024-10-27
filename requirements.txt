@@ -2,7 +2,7 @@ accelerate
 brouhaha @ https://github.com/marianne-m/brouhaha-vad/archive/main.zip#sha256=3e920f66726a95dd09249a056051732dce44d08e3c2005f20aa9e9b84455376d
 datasets<3.0.0,>=2.16.1
 deepgram_captions
-deepgram_sdk
+deepgram-sdk==2.12.0
 demucs
 g2p
 huggingface_hub
@@ -28,3 +28,4 @@ torch
 torchaudio
 tqdm
 transformers
+whisper
