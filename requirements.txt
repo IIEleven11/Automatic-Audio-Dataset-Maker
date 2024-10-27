@@ -28,4 +28,4 @@ torch
 torchaudio
 tqdm
 transformers
-whisper
+openai-whisper
