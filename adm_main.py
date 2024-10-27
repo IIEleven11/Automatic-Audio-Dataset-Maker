@@ -132,50 +132,27 @@ def format_time(seconds):
 
 def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
     """
-    Transcribe audio using local Whisper model with multi-GPU support.
-    
-    Args:
-        audio_file_path (str): Path to the audio file
-        output_dir (str): Directory to save the SRT files
-        num_gpus (int, optional): Number of GPUs to use. If None, use all available GPUs.
+    Transcribe audio using local Whisper model.
     """
     try:
-        import torch
-        import torch.nn as nn
-        from torch.nn.parallel import DataParallel
+        # Set device
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        # Check available GPUs
-        available_gpus = torch.cuda.device_count()
-        if available_gpus == 0:
-            print("No GPUs found. Using CPU...")
-            device = "cpu"
-        else:
-            if num_gpus is None or num_gpus > available_gpus:
-                num_gpus = available_gpus
-            print(f"Using {num_gpus} GPU(s) for transcription...")
-            device = "cuda"
-
-        # Load the Whisper model
-        # Load the Whisper model
-        model = whisper.load_model("large-v3")
+        # Load model
+        model = whisper.load_model("large-v3").to(device)
         
-        if device == "cuda" and num_gpus > 1:
-            # Move model to GPU and wrap with DataParallel
-            model = model.to(device)
-            model = DataParallel(model, device_ids=list(range(num_gpus)))
-            
-            # Optimize memory usage
+        # Enable memory efficient optimizations
+        if device == "cuda":
             torch.cuda.empty_cache()
             torch.backends.cudnn.benchmark = True
-        else:
-            model = model.to(device)
-
+        
+        # Transcribe with optimized settings
         result = model.transcribe(
             audio_file_path,
             language="en",
             word_timestamps=True,
             verbose=True,
-            fp16=True
+            fp16=(device == "cuda")  # Use FP16 only on GPU
         )
         
         # Generate SRT format
