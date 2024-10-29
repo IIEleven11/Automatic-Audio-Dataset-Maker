@@ -10,14 +10,22 @@ from tools.constants import COMBINED_USERNAME_REPOID, WAVS_DIR_POSTDENOISE
 
 
 def denoise_audio(data, rate):
+    # Check if the audio data is empty or invalid
+    if len(data) == 0 or np.all(data == 0):
+        print("Warning: Empty or silent audio data detected. Skipping denoising.")
+        return data
+    
     # Convert to float32
     if data.dtype != np.float32:
         data = data.astype(np.float32)
     
-    # Apply noise reduction
-    reduced_noise = nr.reduce_noise(y=data, sr=rate, prop_decrease=0.6, stationary=True)
-    
-    return reduced_noise
+    try:
+        # Apply noise reduction
+        reduced_noise = nr.reduce_noise(y=data, sr=rate, prop_decrease=0.6, stationary=True)
+        return reduced_noise
+    except ValueError as e:
+        print(f"Warning: Error during denoising - {str(e)}. Returning original audio.")
+        return data
 
 def process_dataset(dataset_name, split, output_folder):
     if not os.path.exists(output_folder):
