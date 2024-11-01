@@ -1,3 +1,5 @@
+# Script will convert a directory of .parquet files (data speech format) into a directory of .wav files and a metadata CSV file.
+
 import os
 import glob
 import pandas as pd
@@ -39,7 +41,6 @@ def process_parquet_files(input_dir, output_audio_dir, output_csv_dir):
                             wav_file.setparams(wav_bytes.getparams())
                             wav_file.writeframes(wav_bytes.readframes(wav_bytes.getnframes()))
             else:
-                # Use the existing path
                 audio_path = audio_data['path']
                 new_filename = os.path.basename(audio_path)
                 new_audio_path = os.path.join(output_audio_dir, new_filename)
@@ -49,11 +50,9 @@ def process_parquet_files(input_dir, output_audio_dir, output_csv_dir):
                 'audio': os.path.relpath(new_audio_path, start=os.path.dirname(output_csv_dir)),
                 'text': text
             })
-
-    # Create a DataFrame from all the data
+            
     final_df = pd.DataFrame(all_data)
 
-    # Save the DataFrame as a CSV file
     csv_path = os.path.join(output_csv_dir, 'metadata.csv')
     final_df.to_csv(csv_path, index=False, sep='|')
 
