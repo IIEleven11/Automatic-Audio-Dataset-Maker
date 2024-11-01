@@ -31,7 +31,8 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
 
 ## Usage
 1. Put your audio files in the RAW_AUDIO folder. They should be 44.1hz, mono, and 16bit PCM. (These are not absolute values. I am just setting something as a default for any beginners to follow)
-2. Run python adm_main.py and follow the prompts in the terminal
+2. Setup config.yaml with your options then python adm_main.py -or-
+   - Run python adm_main.py and follow the prompts in the terminal
    
    Example:
    1. Enter your Hugging Face username: __```IIEleven11```__
