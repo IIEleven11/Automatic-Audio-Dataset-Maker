@@ -3,12 +3,15 @@ import re
 import csv
 import json
 import time
+import yaml
 import torch
+import pysrt
 import shutil
 import asyncio
 import whisper
 import logging
 import datetime
+import argparse
 import subprocess
 import numpy as np
 import pandas as pd
@@ -27,10 +30,10 @@ from datasets.utils.py_utils import convert_file_size_to_int
 from datasets.download.streaming_download_manager import xgetsize
 from datasets import load_dataset, Audio, load_from_disk, DatasetDict
 
+
 os.makedirs('logs', exist_ok=True)
 timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 log_filename = f'logs/adm_main_{timestamp}.log'
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -40,8 +43,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
-
 
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -59,9 +60,6 @@ if HUGGINGFACE_TOKEN:
         HUGGINGFACE_TOKEN = input("Enter your Hugging Face access token: ")
 
 
-
-
-
 DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
 if not DEEPGRAM_API_KEY:
     DEEPGRAM_API_KEY = input("Enter your Deepgram API key: ")
@@ -77,47 +75,85 @@ options = {
 }
 
 
+def load_yaml_config(yaml_path):
+    """Load configuration from YAML file."""
+    with open(yaml_path, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
+
+
 #MARK: Collect user inputs
-def collect_USER_INPUTS():
-    HF_USERNAME = input("Enter your Hugging Face username: ")
-    REPO_NAME = input("Enter the repository name: ")
-    COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
-
-    SKIP_STEP_1_2 = input("Do you want to SKIP audio transcription? (y/n): ").lower() == 'y'
-
-    TRANSCRIPTION_CHOICE = None
-    
-    if not SKIP_STEP_1_2:
-        while True:
-            TRANSCRIPTION_CHOICE = input("Choose transcription method (1 for local Whisper, 2 for Deepgram API): ").strip()
-            if TRANSCRIPTION_CHOICE in ['1', '2']:
-                break
-            logger.info("Invalid choice. Please enter 1 or 2.")
-
-        if TRANSCRIPTION_CHOICE == '1':
-            available_gpus = torch.cuda.device_count()
-            if available_gpus > 0:
-                logger.info(f"\nDetected {available_gpus} GPU(s)")
-                while True:
-                    gpu_input = input(f"Enter number of GPUs to use (1-{available_gpus}, or press Enter for all): ").strip()
-                    if not gpu_input:
+def collect_USER_INPUTS(yaml_path=None):
+    """Collect user inputs either from YAML file or interactive input."""
+    if yaml_path and Path(yaml_path).exists():
+        logger.info(f"Loading configuration from {yaml_path}")
+        config = load_yaml_config(yaml_path)
+        
+        # Extract values from YAML
+        HF_USERNAME = config['huggingface']['username']
+        REPO_NAME = config['huggingface']['repo_name']
+        COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
+        SKIP_STEP_1_2 = config['audio_processing']['skip_transcription']
+        
+        TRANSCRIPTION_CHOICE = None
+        NUM_GPUS = None
+        
+        if not SKIP_STEP_1_2:
+            TRANSCRIPTION_CHOICE = str(config['audio_processing']['transcription_method'])
+            if TRANSCRIPTION_CHOICE == '1':
+                available_gpus = torch.cuda.device_count()
+                if available_gpus > 0:
+                    NUM_GPUS = config['audio_processing']['num_gpus']
+                    if NUM_GPUS is None:
                         NUM_GPUS = available_gpus
-                        break
-                    try:
-                        num = int(gpu_input)
-                        if 1 <= num <= available_gpus:
-                            NUM_GPUS = num
+                    elif not (1 <= NUM_GPUS <= available_gpus):
+                        raise ValueError(f"num_gpus must be between 1 and {available_gpus}")
+        
+        SKIP_DENOISE_NORMALIZE = config['audio_processing']['skip_denoise_normalize']
+        SPEAKER_NAME = config['dataset']['speaker_name']
+        EVAL_PERCENTAGE = float(config['dataset']['eval_percentage'])
+
+
+    else:
+        # Original interactive input code
+        HF_USERNAME = input("Enter your Hugging Face username: ")
+        REPO_NAME = input("Enter the repository name: ")
+        COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
+        
+        SKIP_STEP_1_2 = input("Do you want to SKIP audio transcription? (y/n): ").lower() == 'y'
+        
+        TRANSCRIPTION_CHOICE = None
+        NUM_GPUS = None
+        
+        if not SKIP_STEP_1_2:
+            while True:
+                TRANSCRIPTION_CHOICE = input("Choose transcription method (1 for local Whisper, 2 for Deepgram API): ").strip()
+                if TRANSCRIPTION_CHOICE in ['1', '2']:
+                    break
+                logger.info("Invalid choice. Please enter 1 or 2.")
+
+            if TRANSCRIPTION_CHOICE == '1':
+                available_gpus = torch.cuda.device_count()
+                if available_gpus > 0:
+                    logger.info(f"\nDetected {available_gpus} GPU(s)")
+                    while True:
+                        gpu_input = input(f"Enter number of GPUs to use (1-{available_gpus}, or press Enter for all): ").strip()
+                        if not gpu_input:
+                            NUM_GPUS = available_gpus
                             break
-                        logger.info(f"Please enter a number between 1 and {available_gpus}")
-                    except ValueError:
-                        logger.error("Please enter a valid number")
-    NUM_GPUS = None
+                        try:
+                            num = int(gpu_input)
+                            if 1 <= num <= available_gpus:
+                                NUM_GPUS = num
+                                break
+                            logger.info(f"Please enter a number between 1 and {available_gpus}")
+                        except ValueError:
+                            logger.error("Please enter a valid number")
 
-
-    SKIP_DENOISE_NORMALIZE = input("***This functionality is very sensitive, it's likely to cause failure and I suggest skipping it for now.*** Do you want to SKIP denoising and normalizing? (y/n) : ").lower() == 'y'
-
-    SPEAKER_NAME = input("Enter the name of the person speaking in the audio: ")
-    EVAL_PERCENTAGE = float(input("Enter the percentage of data to move to evaluation set (10-15%): "))
+        SKIP_DENOISE_NORMALIZE = input("***This functionality is very sensitive, it's likely to cause failure and I suggest skipping it for now.*** Do you want to SKIP denoising and normalizing? (y/n) : ").lower() == 'y'
+        
+        SPEAKER_NAME = input("Enter the name of the person speaking in the audio: ")
+        EVAL_PERCENTAGE = float(input("Enter the percentage of data to move to evaluation set (10-15%): "))
 
     inputs = {
         'HF_USERNAME': HF_USERNAME,
@@ -175,10 +211,19 @@ def format_time(seconds):
 def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
     """
     Transcribe audio using local Whisper model.
+    Skip if SRT file already exists.
     """
+    # Check if SRT file already exists
+    base_name = os.path.splitext(os.path.basename(audio_file_path))[0]
+    srt_file_path = os.path.join(output_dir, f"{base_name}.srt")
+    
+    if os.path.exists(srt_file_path):
+        logger.info(f"SRT file already exists for {base_name}, skipping transcription...")
+        return True
+        
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = whisper.load_model("large-v3").to(device)
+        model = whisper.load_model("turbo").to(device)
         if device == "cuda":
             torch.cuda.empty_cache()
             torch.backends.cudnn.benchmark = True
@@ -195,9 +240,7 @@ def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
             end_time = format_time(segment["end"])
             text = segment["text"].strip()
             srt_content += f"{i}\n{start_time} --> {end_time}\n{text}\n\n"
-        base_name = os.path.splitext(os.path.basename(audio_file_path))[0]
-        srt_file_path = os.path.join(output_dir, f"{base_name}.srt")
-        
+            
         with open(srt_file_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
             
@@ -211,7 +254,6 @@ def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
         logger.error(f"Error transcribing {audio_file_path}: {e}")
         return False
 
-
 #MARK: Generate SRT
 def generate_srt(captions):
     srt_content = ""
@@ -219,114 +261,185 @@ def generate_srt(captions):
         srt_content += f"{i}\n{format_time(start)} --> {format_time(end)}\n{text}\n\n"
     return srt_content
 
-
 #MARK: Process transcription
 def process_transcription(json_path, SRT_DIR_PATH):
-    with open(json_path, 'r') as f:
-        dg_response = json.load(f)
-    transcription = DeepgramConverter(dg_response)
-    line_length = 250
-    lines = transcription.get_lines(line_length)
-    captions = []
-    
-    for line_group in lines:
-        for line in line_group:
-            start_time = line.get('start')
-            end_time = line.get('end')
-            text = line.get('punctuated_word')
-            if start_time is not None and end_time is not None and text is not None:
-                captions.append((start_time, end_time, text))
+    """
+    Convert Deepgram JSON response to SRT format.
+    """
+    try:
+        with open(json_path, 'r') as f:
+            dg_response = json.load(f)
+        
+        transcription = DeepgramConverter(dg_response)
+        line_length = 250
+        lines = transcription.get_lines(line_length)
+        captions = []
 
-    processed_captions = []
-    current_start = None
-    current_end = None
-    current_text = ""
-    segment_duration = np.random.normal(8.1, 3.45)
+        for line_group in lines:
+            for line in line_group:
+                start_time = line.get('start')
+                end_time = line.get('end')
+                text = line.get('punctuated_word')
+                if start_time is not None and end_time is not None and text is not None:
+                    captions.append((start_time, end_time, text))
 
-    for start, end, text in captions:
-        if current_start is None:
-            current_start = start
-            current_end = end
-            current_text = text
-        elif end - current_start <= segment_duration and len(current_text + " " + text) <= 250:
-            current_end = end
-            current_text += " " + text
-        else:
-            if current_end - current_start >= 1.2:
-                processed_captions.append((current_start, current_end, current_text.strip()))
-            current_start = start
-            current_end = end
-            current_text = text
-            segment_duration = np.random.normal(8.1, 3.45)
+        srt_content = generate_srt(captions)
 
-    if current_end - current_start >= 1.2:
-        processed_captions.append((current_start, current_end, current_text.strip()))
-
-    return processed_captions
-
-
-#MARK: SRT time to milliseconds
-def srt_time_to_ms(srt_time):
-    hours, minutes, seconds, milliseconds = map(int, re.split('[:,]', srt_time))
-    return (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds
+        base_name = os.path.splitext(os.path.basename(json_path))[0]
+        srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
+        
+        with open(srt_file_path, 'w', encoding='utf-8') as f:
+            f.write(srt_content)
+            
+        logger.info(f"Created SRT file: {srt_file_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing transcription for {json_path}: {str(e)}")
+        return False
 
 
 #MARK: Segment audio and create metadata
 def segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR_PREDENOISE, PARENT_CSV, SPEAKER_NAME):
+    """
+    Audio segmentation using Gaussian distribution for segment durations.
+    """
+    logger.info("Starting audio segmentation and metadata creation...")
     os.makedirs(WAVS_DIR_PREDENOISE, exist_ok=True)
-    CSV_FILE_PATH = os.path.join(PARENT_CSV, "metadata.csv")
+    metadata_entries = []
 
-    with open(CSV_FILE_PATH, 'w', newline='') as csv_file:
-        csv_writer = csv.writer(csv_file, delimiter='|')
-        csv_writer.writerow(['audio', 'text', 'speaker_name'])
-        srt_files = [f for f in os.listdir(SRT_DIR_PATH) if f.endswith('.srt')]
 
-        for srt_file in srt_files:
-            base_name = os.path.splitext(srt_file)[0]
-            audio_file = f"{base_name}.wav"
-            audio_path = os.path.join(AUDIO_DIR_PATH, audio_file)
-            srt_path = os.path.join(SRT_DIR_PATH, srt_file)
+    def parse_srt(srt_file_path):
+        """Parse the .srt file and return a list of subtitles with start and end times in seconds."""
+        subtitles = pysrt.open(srt_file_path)
+        subs = []
+        for sub in subtitles:
+            start_time = sub.start.ordinal / 1000.0
+            end_time = sub.end.ordinal / 1000.0
+            text = sub.text.replace('\n', ' ').strip()
+            subs.append({'start': start_time, 'end': end_time, 'text': text})
+        return subs
 
-            if os.path.exists(audio_path):
-                audio = AudioSegment.from_wav(audio_path)
 
-                with open(srt_path, 'r') as srt_file:
-                    srt_content = srt_file.read()
+    def generate_gaussian_durations(total_duration, min_length=2, max_length=18):
+        """Generate segment durations following a truncated Gaussian distribution."""
+        mean = (min_length + max_length) / 2
+        std_dev = (max_length - min_length) / 6
+        durations = []
+        accumulated = 0
+        while accumulated < total_duration:
+            duration = np.random.normal(mean, std_dev)
+            duration = max(min(duration, max_length), min_length)
+            
+            remaining = total_duration - accumulated
+            
+            if remaining < min_length:
+                if durations:
+                    if durations[-1] + remaining <= max_length:
+                        durations[-1] += remaining
+                break
+            if accumulated + duration > total_duration:
+                remaining = total_duration - accumulated
+                if min_length <= remaining <= max_length:
+                    durations.append(remaining)
+                elif remaining > max_length:
+                    while remaining > 0:
+                        if remaining > max_length:
+                            durations.append(max_length)
+                            remaining -= max_length
+                        else:
+                            if remaining >= min_length:
+                                durations.append(remaining)
+                            elif durations:
+                                durations[-1] += remaining
+                            break
+                break
+            durations.append(duration)
+            accumulated += duration
+        return durations
 
-                segments = re.findall(
-                    r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)\n\n', 
-                    srt_content, re.DOTALL
-                )
 
-                for segment in segments:
-                    index, start_time, end_time, text = segment
-                    start_ms = srt_time_to_ms(start_time)
-                    end_ms = srt_time_to_ms(end_time)
+    def adjust_segments(subs, durations):
+        """Adjust the segments to match the desired durations."""
+        adjusted_segments = []
+        i = 0
+        num_subs = len(subs)
+        start_time = subs[0]['start']
+        
+        while i < num_subs:
+            if not durations:
+                break
+                
+            segment_duration = durations.pop(0)
+            target_end_time = start_time + segment_duration
+            
+            current_segment = {
+                'start': start_time,
+                'text': '',
+                'end': start_time
+            }
+            
+            while i < num_subs:
+                current_segment['text'] += ' ' + subs[i]['text']
+                current_segment['end'] = min(subs[i]['end'], start_time + 18)  # force max duration
+                
+                if subs[i]['end'] >= target_end_time or current_segment['end'] - current_segment['start'] >= 18:
+                    break
+                i += 1
+                
+            segment_duration = current_segment['end'] - current_segment['start']
+            if 2 <= segment_duration <= 18:
+                current_segment['text'] = current_segment['text'].strip()
+                adjusted_segments.append(current_segment)
 
-                    # Skip zero-duration segments
-                    if end_ms <= start_ms:
-                        logger.info(f"Skipping zero-duration segment {index} in {srt_file.name}")
-                        continue
+            i += 1
+            if i < num_subs:
+                start_time = subs[i]['start']
 
-                    audio_segment = audio[start_ms:end_ms]
+        return adjusted_segments
 
-                    # Skip zero-length audio segments
-                    if len(audio_segment) == 0:
-                        logger.info(f"Skipping zero-length audio segment {index} in {srt_file.name}")
-                        continue
+    srt_files = [f for f in os.listdir(SRT_DIR_PATH) if f.endswith('.srt')]
+    for srt_file in tqdm(srt_files, desc="Processing audio files"):
+        srt_file_path = os.path.join(SRT_DIR_PATH, srt_file)
+        base_name = os.path.splitext(srt_file)[0]
+        wav_file = base_name + '.wav'
+        wav_file_path = os.path.join(AUDIO_DIR_PATH, wav_file)
+        
+        if not os.path.exists(wav_file_path):
+            logger.warning(f'Audio file {wav_file} does not exist. Skipping.')
+            continue
 
-                    segment_filename = f"{base_name}_segment_{index}.wav"
-                    segment_filepath = os.path.join(WAVS_DIR_PREDENOISE, segment_filename)
-                    audio_segment.export(segment_filepath, format="wav")
-                    logger.info(f"Segment {index} saved to {segment_filepath}")
+        subs = parse_srt(srt_file_path)
+        if not subs:
+            logger.warning(f'No subtitles found in {srt_file}. Skipping.')
+            continue
 
-                    full_audio_path = os.path.join(WAVS_DIR_PREDENOISE, segment_filename)
-                    csv_writer.writerow([full_audio_path, text, SPEAKER_NAME])
-            else:
-                logger.info(f"No corresponding audio file found for {srt_file}")
-    logger.info("All segments have been processed and saved.")
-    logger.info(f"CSV file has been saved to {CSV_FILE_PATH}")
+        audio = AudioSegment.from_wav(wav_file_path)
+        total_duration = len(audio) / 1000.0  # Convert to seconds
+        durations = generate_gaussian_durations(total_duration)
+        adjusted_segments = adjust_segments(subs, durations)
 
+        # Process and export audio segments
+        for idx, segment in enumerate(adjusted_segments):
+            start_ms = segment['start'] * 1000
+            end_ms = segment['end'] * 1000
+            audio_segment = audio[start_ms:end_ms]
+            output_filename = f"{base_name}_{idx+1}.wav"
+            output_path = os.path.join(WAVS_DIR_PREDENOISE, output_filename)
+            audio_segment.export(output_path, format="wav")
+            
+            metadata_entries.append({
+                'audio': output_path,
+                'text': segment['text'],
+                'speaker_name': SPEAKER_NAME
+            })
+        
+        logger.info(f'Processed {wav_file} into {len(adjusted_segments)} segments.')
+
+    os.makedirs(PARENT_CSV, exist_ok=True)
+    metadata_df = pd.DataFrame(metadata_entries)
+    metadata_df.to_csv(os.path.join(PARENT_CSV, "metadata.csv"), sep='|', index=False)
+    logger.info(f'Metadata saved to {os.path.join(PARENT_CSV, "metadata.csv")}')
 
 
 #MARK: Split dataset
@@ -443,8 +556,7 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
 
 #MARK: Run initial processing
 def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
-    dataspeech_dir = os.path.join(PROJECT_ROOT, "dataspeech", "main.py"
-    )
+    dataspeech_dir = os.path.join(PROJECT_ROOT, "dataspeech", "dataspeech", "main.py")
     env = os.environ.copy()
     command = [
         "python", dataspeech_dir,
@@ -456,7 +568,27 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         "--repo_id", REPO_NAME,
         "--rename_column",
         "--apply_squim_quality_estimation",
+        # comment out all 6 arguments (lines 475- 480) below or adjust for less than 8x RTX 4090's. Keep whats above
+        "--cpu_writer_batch_size", "1000",
+        "--batch_size", "128",
+        "--penn_batch_size", "64",
+        "--num_workers_per_gpu_for_pitch", "4",
+        "--num_workers_per_gpu_for_snr", "4",
+        "--num_workers_per_gpu_for_squim", "4"
     ]
+    try:
+        logger.info("Running initial dataset processing with DataSpeech...")
+        logger.info(f"Using DataSpeech main.py at: {dataspeech_dir}")
+        subprocess.run(command, check=True, env=env)
+        logger.info("Initial processing completed successfully.")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"An error occurred during initial processing:")
+        logger.error(f"Command: {' '.join(e.cmd)}")
+        logger.error(f"Return code: {e.returncode}")
+        logger.error(f"Output: {e.output if hasattr(e, 'output') else 'No output'}")
+        logger.error(f"Error: {e.stderr if hasattr(e, 'stderr') else 'No error output'}")
+        return False
 
 
 #MARK: Run metadata to text processing
@@ -475,7 +607,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         "--path_to_text_bins", text_bins_path,
         "--avoid_pitch_computation",
         "--apply_squim_quality_estimation",
-        "--output_dir", UNFILTERED_PARQUET_DIR
+        "--output_dir", UNFILTERED_PARQUET_DIR,
     ]
     try:
         logger.info("Running metadata to text processing...")
@@ -617,7 +749,6 @@ def push_to_hub_with_retry(dataset, repo_id, max_retries=3, delay=5):
                 repo_id,
                 private=True,
                 token=HUGGINGFACE_TOKEN,
-                repo_type="dataset"
             )
             logger.info(f"Dataset successfully pushed to Hugging Face Hub under {repo_id}.")
             return
@@ -637,7 +768,11 @@ def push_to_hub_with_retry(dataset, repo_id, max_retries=3, delay=5):
 
 #MARK: Main function
 async def main():
-    USER_INPUTS = collect_USER_INPUTS()
+    parser = argparse.ArgumentParser(description='Audio Dataset Maker')
+    parser.add_argument('--config', type=str, help='Path to YAML configuration file')
+    args = parser.parse_args()
+    
+    USER_INPUTS = collect_USER_INPUTS(args.config if args.config else None)
     AUDIO_DIR_PATH = os.path.join(PROJECT_ROOT, "RAW_AUDIO")
     JSON_DIR_PATH = os.path.join(PROJECT_ROOT, "JSON_DIR_PATH")
     SRT_DIR_PATH = os.path.join(PROJECT_ROOT, "SRTS")
@@ -661,7 +796,6 @@ async def main():
     constants.WAVS_DIR_POSTDENOISE = WAVS_DIR_POSTDENOISE
     constants.COMBINED_USERNAME_REPOID = COMBINED_USERNAME_REPOID
     constants.FILTERED_PARQUET_AND_AUDIO = FILTERED_PARQUET_AND_AUDIO
-    
 
 
     #MARK: Steps 1 and 2 (transcribe audio and convert JSON to SRT)
@@ -675,27 +809,29 @@ async def main():
         if USER_INPUTS['TRANSCRIPTION_CHOICE'] == '1':
             logger.info("Using local Whisper model for transcription...")
             for audio_file in tqdm(audio_files, desc="Transcribing with Whisper"):
+                base_name = os.path.splitext(os.path.basename(audio_file))[0]
+                srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
+            
+                if os.path.exists(srt_file_path):
+                    tqdm.write(f"Skipping {base_name} - SRT file already exists")
+                    continue
+
                 transcribe_with_whisper(audio_file, SRT_DIR_PATH, num_gpus=USER_INPUTS['NUM_GPUS'])
+
         else:
             logger.info("Using Deepgram API for transcription...")
             for audio_file in audio_files:
                 await transcribe_audio(audio_file, dg_client, options, JSON_DIR_PATH)
-                
+
             logger.info("Converting JSON responses to SRT format...")
             json_files = [f for f in os.listdir(JSON_DIR_PATH) if f.endswith('.json')]
             
             for json_file in json_files:
                 json_path = os.path.join(JSON_DIR_PATH, json_file)
-                processed_captions = process_transcription(json_path, SRT_DIR_PATH)
-                if processed_captions:
-                    srt_content = generate_srt(processed_captions)
-                    base_name = os.path.splitext(json_file)[0]
-                    srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
-                    with open(srt_file_path, "w") as srt_file:
-                        srt_file.write(srt_content)
-                    logger.info(f"SRT file saved to {srt_file_path}")
+                if process_transcription(json_path, SRT_DIR_PATH):
+                    logger.info(f"Successfully processed {json_file}")
                 else:
-                    logger.info(f"No captions were generated for {json_file}")
+                    logger.warning(f"Failed to process {json_file}")
 
         logger.info("Step 1 completed: Audio transcription finished")
 
@@ -745,22 +881,22 @@ async def main():
 
     #MARK: Step 5: Run initial processing
     logger.info("Starting Step 5: Run initial processing")
-    run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME)
-    logger.info("Step 5 completed: Initial processing completed.")
-    
-    
+    if not run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
+        logger.error("Failed to complete initial processing. Stopping execution.")
+        return
+
+
     #MARK: Step 6: Run metadata_to_text
     logger.info("Starting Step 6: Run metadata_to_text")
     bin_edges_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_bin_edges.json")
     text_bins_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_text_bins.json")
-    run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
-
-    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME,  bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
+    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
+    
     if dataset is not None:
         save_dataset_to_parquet(dataset, UNFILTERED_PARQUET_DIR)
         logger.info("Step 6 completed: Metadata processed to text and saved as Parquet files.")
     else:
-        logger.info("Failed to process metadata to text. Skipping Parquet file creation.")
+        logger.error("Failed to process metadata to text. Skipping Parquet file creation.")
 
 
     #MARK: Step 7: Filter the dataset
@@ -783,20 +919,34 @@ async def main():
     logger.info(f"Contents of {FILTERED_PARQUET_DIR}:")
     for file in os.listdir(FILTERED_PARQUET_DIR):
         logger.info(file)
+
+    logger.info(f"Loading original dataset from hub: {COMBINED_USERNAME_REPOID}")
+    original_dataset = load_dataset(COMBINED_USERNAME_REPOID)
+
     if os.path.exists(os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet")):
-        dataset = load_dataset("parquet", data_files=os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet"))
+        filtered_dataset = load_dataset("parquet", data_files=os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet"))
     elif os.path.exists(os.path.join(FILTERED_PARQUET_DIR, "train")):
-        dataset = load_dataset("parquet", data_dir=FILTERED_PARQUET_DIR)
+        filtered_dataset = load_dataset("parquet", data_dir=FILTERED_PARQUET_DIR)
     else:
         data_files = [os.path.join(FILTERED_PARQUET_DIR, f) for f in os.listdir(FILTERED_PARQUET_DIR) if f.endswith('.parquet')]
-        dataset = load_dataset("parquet", data_files=data_files)
-    dataset = dataset.cast_column("audio", Audio(sampling_rate=44100))
+        filtered_dataset = load_dataset("parquet", data_files=data_files)
 
-    push_to_hub_with_retry(dataset, COMBINED_USERNAME_REPOID)
+    filtered_indices = set(filtered_dataset['train']['__index_level_0__'])
+
+    # Create a new dataset with only the filtered rows, preserving the audio column
+    def filter_fn(example, idx):
+        return idx in filtered_indices
+
+    logger.info("Creating filtered dataset with audio...")
+    final_dataset = original_dataset.filter(
+        filter_fn,
+        with_indices=True
+    )
+
+    logger.info("Pushing filtered dataset to hub...")
+    push_to_hub_with_retry(final_dataset, COMBINED_USERNAME_REPOID)
     logger.info(f"Filtered dataset successfully pushed to Hugging Face Hub under {COMBINED_USERNAME_REPOID}.")
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
