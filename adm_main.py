@@ -569,12 +569,12 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         "--rename_column",
         "--apply_squim_quality_estimation",
         # comment out all 6 arguments (lines 475- 480) below or adjust for less than 8x RTX 4090's. Keep whats above
-        "--cpu_writer_batch_size", "1000",
-        "--batch_size", "128",
-        "--penn_batch_size", "64",
-        "--num_workers_per_gpu_for_pitch", "4",
-        "--num_workers_per_gpu_for_snr", "4",
-        "--num_workers_per_gpu_for_squim", "4"
+        # "--cpu_writer_batch_size", "1000",
+        # "--batch_size", "128",
+        # "--penn_batch_size", "64",
+        # "--num_workers_per_gpu_for_pitch", "4",
+        # "--num_workers_per_gpu_for_snr", "4",
+        # "--num_workers_per_gpu_for_squim", "4" 
     ]
     try:
         logger.info("Running initial dataset processing with DataSpeech...")
@@ -603,8 +603,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         "--repo_id", REPO_NAME,
         "--configuration", "default",
         "--cpu_num_workers", "8",
-        "--path_to_bin_edges", bin_edges_path,
-        "--path_to_text_bins", text_bins_path,
+        "--save_bin_edges"
         "--avoid_pitch_computation",
         "--apply_squim_quality_estimation",
         "--output_dir", UNFILTERED_PARQUET_DIR,
