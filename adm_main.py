@@ -585,7 +585,7 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
 
 
 #MARK: Run metadata to text processing
-def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, text_bins_path, bin_edges_path, UNFILTERED_PARQUET_DIR):
+def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR):
     # Load config at the start of the function
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
@@ -602,7 +602,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, text_bins_path, bi
         "--repo_id", REPO_NAME,
         "--configuration", "default", 
         "--cpu_num_workers", "8",
-        "--save_bin_edges", "computed_bin_edges.json",
+        "--save_bin_edges", bin_edges_path,
         "--avoid_pitch_computation",
         "--apply_squim_quality_estimation",
         "--output_dir", UNFILTERED_PARQUET_DIR,
@@ -621,8 +621,8 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, text_bins_path, bi
         logger.error(f"An error occurred during metadata to text processing:")
         logger.error(f"Command: {' '.join(e.cmd)}")
         logger.error(f"Return code: {e.returncode}")
-        logger.error(f"Output: {e.output}")
-        logger.error(f"Error: {e.stderr}")
+        logger.error(f"Output: {e.output if hasattr(e, 'output') else 'No output'}")
+        logger.error(f"Error: {e.stderr if hasattr(e, 'stderr') else 'No error output'}")
         return None
 
 
@@ -890,7 +890,7 @@ async def main():
     logger.info("Starting Step 6: Run metadata_to_text")
     bin_edges_path = os.path.join(PROJECT_ROOT, "computed_bin_edges.json")
     text_bins_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_text_bins.json")
-    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, bin_edges_path, text_bins_path, REPO_NAME, UNFILTERED_PARQUET_DIR)
+    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
     
     if dataset is not None:
         save_dataset_to_parquet(dataset, UNFILTERED_PARQUET_DIR)
