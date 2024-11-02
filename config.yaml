@@ -4,11 +4,11 @@ huggingface:
   repo_name: "YourRepoName" # Name for the repository
   
 audio_processing:
-  skip_transcription: true  # true to skip audio transcription
+  skip_transcription: false # true to skip audio transcription
   transcription_method: 1    # 1 for local Whisper, 2 for Deepgram API
   num_gpus: null            # number of GPUs to use (null for all available)
   skip_denoise_normalize: true  # true to skip denoising and normalizing
 
 dataset:
   speaker_name: "Bob"  # Name of the speaker in the audio
-  eval_percentage: 10.0     # Percentage of data for evaluation (normal ranges around 10-15%)
+  eval_percentage: 10   # Percentage of data for evaluation (normal ranges around 10-15%)
