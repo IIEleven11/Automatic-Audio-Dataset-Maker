@@ -603,11 +603,12 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         "--repo_id", REPO_NAME,
         "--configuration", "default",
         "--cpu_num_workers", "8",
-        "--save_bin_edges"
+        "--save_bin_edges", "computed_bin_edges.json"
         "--avoid_pitch_computation",
         "--apply_squim_quality_estimation",
         "--output_dir", UNFILTERED_PARQUET_DIR,
     ]
+
     try:
         logger.info("Running metadata to text processing...")
         subprocess.run(command, check=True, env=env)
