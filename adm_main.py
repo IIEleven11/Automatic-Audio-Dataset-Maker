@@ -568,13 +568,6 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         "--repo_id", REPO_NAME,
         "--rename_column",
         "--apply_squim_quality_estimation",
-        # comment out all 6 arguments (lines 475- 480) below or adjust for less than 8x RTX 4090's. Keep whats above
-        # "--cpu_writer_batch_size", "1000",
-        # "--batch_size", "128",
-        # "--penn_batch_size", "64",
-        # "--num_workers_per_gpu_for_pitch", "4",
-        # "--num_workers_per_gpu_for_snr", "4",
-        # "--num_workers_per_gpu_for_squim", "4" 
     ]
     try:
         logger.info("Running initial dataset processing with DataSpeech...")
@@ -592,21 +585,28 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
 
 
 #MARK: Run metadata to text processing
-def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR):
+def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, text_bins_path, bin_edges_path, UNFILTERED_PARQUET_DIR):
+    # Load config at the start of the function
+    with open('config.yaml', 'r') as f:
+        config = yaml.safe_load(f)
+    env = os.environ.copy()
+    speaker_name = config['dataset']['speaker_name']
+    
     metadata_to_text_script_path = os.path.join(
         PROJECT_ROOT, "dataspeech", "scripts", "metadata_to_text.py"
     )
-    env = os.environ.copy()
+
     command = [
         "python", metadata_to_text_script_path,
         COMBINED_USERNAME_REPOID,
         "--repo_id", REPO_NAME,
-        "--configuration", "default",
+        "--configuration", "default", 
         "--cpu_num_workers", "8",
-        "--save_bin_edges", "computed_bin_edges.json"
+        "--save_bin_edges", "computed_bin_edges.json",
         "--avoid_pitch_computation",
         "--apply_squim_quality_estimation",
         "--output_dir", UNFILTERED_PARQUET_DIR,
+        "--speaker_id_column_name", speaker_name
     ]
 
     try:
@@ -888,9 +888,9 @@ async def main():
 
     #MARK: Step 6: Run metadata_to_text
     logger.info("Starting Step 6: Run metadata_to_text")
-    bin_edges_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_bin_edges.json")
+    bin_edges_path = os.path.join(PROJECT_ROOT, "computed_bin_edges.json")
     text_bins_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_text_bins.json")
-    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
+    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, bin_edges_path, text_bins_path, REPO_NAME, UNFILTERED_PARQUET_DIR)
     
     if dataset is not None:
         save_dataset_to_parquet(dataset, UNFILTERED_PARQUET_DIR)
