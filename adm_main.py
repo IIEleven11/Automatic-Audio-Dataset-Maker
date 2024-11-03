@@ -88,16 +88,15 @@ def collect_USER_INPUTS(yaml_path=None):
     if yaml_path and Path(yaml_path).exists():
         logger.info(f"Loading configuration from {yaml_path}")
         config = load_yaml_config(yaml_path)
-        
-        # Extract values from YAML
+
         HF_USERNAME = config['huggingface']['username']
         REPO_NAME = config['huggingface']['repo_name']
         COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
         SKIP_STEP_1_2 = config['audio_processing']['skip_transcription']
-        
+
         TRANSCRIPTION_CHOICE = None
         NUM_GPUS = None
-        
+
         if not SKIP_STEP_1_2:
             TRANSCRIPTION_CHOICE = str(config['audio_processing']['transcription_method'])
             if TRANSCRIPTION_CHOICE == '1':
@@ -254,12 +253,14 @@ def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
         logger.error(f"Error transcribing {audio_file_path}: {e}")
         return False
 
+
 #MARK: Generate SRT
 def generate_srt(captions):
     srt_content = ""
     for i, (start, end, text) in enumerate(captions, 1):
         srt_content += f"{i}\n{format_time(start)} --> {format_time(end)}\n{text}\n\n"
     return srt_content
+
 
 #MARK: Process transcription
 def process_transcription(json_path, SRT_DIR_PATH):
@@ -552,10 +553,11 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
     finally:
         if os.path.exists(temp_csv_path):
             os.remove(temp_csv_path)
-            
+
 
 #MARK: Run initial processing
 def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
+    print("Running initial processing...")
     dataspeech_dir = os.path.join(PROJECT_ROOT, "dataspeech", "dataspeech", "main.py")
     env = os.environ.copy()
     command = [
@@ -573,6 +575,12 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         logger.info("Running initial dataset processing with DataSpeech...")
         logger.info(f"Using DataSpeech main.py at: {dataspeech_dir}")
         subprocess.run(command, check=True, env=env)
+
+        # Cast the audio column before pushing to the hub
+        dataset = load_dataset(COMBINED_USERNAME_REPOID)
+        dataset = dataset.cast_column("audio", Audio())
+        dataset.push_to_hub(COMBINED_USERNAME_REPOID, private=True, token=HUGGINGFACE_TOKEN)
+        print("Initial processing completed successfully.")
         logger.info("Initial processing completed successfully.")
         return True
     except subprocess.CalledProcessError as e:
@@ -586,16 +594,13 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
 
 #MARK: Run metadata to text processing
 def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR):
-    # Load config at the start of the function
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
     env = os.environ.copy()
     speaker_name = config['dataset']['speaker_name']
-    
     metadata_to_text_script_path = os.path.join(
         PROJECT_ROOT, "dataspeech", "scripts", "metadata_to_text.py"
     )
-
     command = [
         "python", metadata_to_text_script_path,
         COMBINED_USERNAME_REPOID,
@@ -608,13 +613,17 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         "--output_dir", UNFILTERED_PARQUET_DIR,
         "--speaker_id_column_name", speaker_name
     ]
-
     try:
         logger.info("Running metadata to text processing...")
         subprocess.run(command, check=True, env=env)
         logger.info("Metadata to text processing completed successfully.")
 
         dataset = load_from_disk(UNFILTERED_PARQUET_DIR)
+        
+        # Cast the audio column before pushing to the hub
+        dataset = dataset.cast_column("audio", Audio())
+        dataset.push_to_hub(COMBINED_USERNAME_REPOID, private=True, token=HUGGINGFACE_TOKEN)
+
         return dataset
 
     except subprocess.CalledProcessError as e:
@@ -693,7 +702,7 @@ def denoise_and_normalize(input_folder, output_folder, dataset_name):
     logger.info(f"Denoising completed! Successfully processed {len(successful_files)} out of {len(wav_files)} files.")
 
 
-    #MARK: Safe normalize audio
+    #MARK: Safe (in theory) normalize audio (Note- Communism works in theory too)
     def safe_normalize_audio(input_file, output_file):
         try:
             audio_data, sample_rate = sf.read(input_file)

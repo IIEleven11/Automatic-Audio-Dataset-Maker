@@ -66,7 +66,7 @@ if __name__ == "__main__":
         start_time = time.time()
         pitch_dataset = dataset.cast_column(audio_column_name, Audio(sampling_rate=16_000)).map(
             pitch_apply,
-            remove_columns=[audio_column_name],
+            # remove_columns=[audio_column_name],
             num_proc=args.cpu_num_workers,
             desc="Compute pitch",
             writer_batch_size=100,
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         logger.warning("Continuing with empty pitch values")
         pitch_dataset = dataset.map(
             lambda x: {"pitch": np.zeros(1), "periodicity": np.zeros(1)},
-            remove_columns=[audio_column_name],
+            # remove_columns=[audio_column_name],
             desc="Creating empty pitch values"
         )
 
