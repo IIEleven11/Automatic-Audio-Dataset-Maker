@@ -18,7 +18,7 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
 
 ## Installation
 
-1. conda create -n audiodatasetmaker python=3.10
+1. conda create -n audiodatasetmaker python==3.10
 2. conda activate audiodatasetmaker
 3. pip install -r requirements.txt
 4. Install git-lifs
