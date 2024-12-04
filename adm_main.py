@@ -566,7 +566,7 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         "--configuration", "default",
         "--text_column_name", "text",
         "--audio_column_name", "audio",
-        "--cpu_num_workers", "8",
+        "--cpu_num_workers", "1",
         "--repo_id", REPO_NAME,
         "--rename_column",
         "--apply_squim_quality_estimation",
@@ -583,13 +583,6 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         print("Initial processing completed successfully.")
         logger.info("Initial processing completed successfully.")
         return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"An error occurred during initial processing:")
-        logger.error(f"Command: {' '.join(e.cmd)}")
-        logger.error(f"Return code: {e.returncode}")
-        logger.error(f"Output: {e.output if hasattr(e, 'output') else 'No output'}")
-        logger.error(f"Error: {e.stderr if hasattr(e, 'stderr') else 'No error output'}")
-        return False
 
 
 #MARK: Run metadata to text processing
@@ -606,7 +599,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         COMBINED_USERNAME_REPOID,
         "--repo_id", REPO_NAME,
         "--configuration", "default", 
-        "--cpu_num_workers", "8",
+        "--cpu_num_workers", "1",
         "--save_bin_edges", bin_edges_path,
         "--avoid_pitch_computation",
         "--apply_squim_quality_estimation",
@@ -655,13 +648,7 @@ def filter_parquet_files(UNFILTERED_PARQUET_DIR):
         logger.error(f"Output: {e.stdout}")
         logger.error(f"Error: {e.stderr}")
         return False
-    except subprocess.CalledProcessError as e:
-        logger.error(f"An error occurred during filtering:")
-        logger.error(f"Command: {e.cmd}")
-        logger.error(f"Return code: {e.returncode}")
-        logger.error(f"Error: {e.stderr}")
-        return False
-
+        
 
 #MARK: Denoise and normalize audio (shitty function will need to be fixed)
 def denoise_and_normalize(input_folder, output_folder, dataset_name):
