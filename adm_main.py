@@ -583,6 +583,13 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         print("Initial processing completed successfully.")
         logger.info("Initial processing completed successfully.")
         return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"An error occurred during initial processing:")
+        logger.error(f"Command: {' '.join(e.cmd)}")
+        logger.error(f"Return code: {e.returncode}")
+        logger.error(f"Output: {e.output if hasattr(e, 'output') else 'No output'}")
+        logger.error(f"Error: {e.stderr if hasattr(e, 'stderr') else 'No error output'}")
+        return False
 
 
 #MARK: Run metadata to text processing
