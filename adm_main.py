@@ -44,6 +44,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+import gc
+import torch
+
+gc.enable()
+
+
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+
+
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -79,6 +90,11 @@ def load_yaml_config(yaml_path):
     """Load configuration from YAML file."""
     with open(yaml_path, 'r') as file:
         config = yaml.safe_load(file)
+    # Set default sample rate if not specified
+    if 'audio_processing' not in config:
+        config['audio_processing'] = {}
+    if 'sample_rate' not in config['audio_processing']:
+        config['audio_processing']['sample_rate'] = 24000  # Default sample rate
     return config
 
 
@@ -255,11 +271,8 @@ def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
 
 
 #MARK: Generate SRT
-def generate_srt(captions):
-    srt_content = ""
-    for i, (start, end, text) in enumerate(captions, 1):
-        srt_content += f"{i}\n{format_time(start)} --> {format_time(end)}\n{text}\n\n"
-    return srt_content
+
+
 
 
 #MARK: Process transcription
@@ -268,6 +281,12 @@ def process_transcription(json_path, SRT_DIR_PATH):
     Convert Deepgram JSON response to SRT format.
     """
     try:
+        def generate_srt(captions):
+            srt_content = ""
+            for i, (start, end, text) in enumerate(captions, 1):
+                srt_content += f"{i}\n{format_time(start)} --> {format_time(end)}\n{text}\n\n"
+            return srt_content
+        
         with open(json_path, 'r') as f:
             dg_response = json.load(f)
         
@@ -275,6 +294,7 @@ def process_transcription(json_path, SRT_DIR_PATH):
         line_length = 250
         lines = transcription.get_lines(line_length)
         captions = []
+
 
         for line_group in lines:
             for line in line_group:
@@ -459,9 +479,11 @@ def split_dataset(PARENT_CSV, eval_percentage, train_dir_path, eval_dir_path):
 
 
 #MARK: Save dataset to parquet
-def save_dataset_to_parquet(dataset_dict, data_dir):
+def save_dataset_to_parquet(dataset_dict, data_dir, sample_rate):
     for split_name, dataset in dataset_dict.items():
         # Not sure if I will need this. I will leave it here for now.
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=sample_rate))
+        
         decodable_columns = [
             k for k, v in dataset.features.items() if require_decoding(v, ignore_decode_attribute=True)
         ]
@@ -473,6 +495,7 @@ def save_dataset_to_parquet(dataset_dict, data_dir):
         shards = (
             dataset.shard(num_shards=num_shards, index=i, contiguous=True) for i in range(num_shards)
         )
+        
         def shards_with_embedded_external_files(shards):
             for shard in shards:
                 fmt = shard.format
@@ -532,7 +555,7 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
     try:
         logger.info(f"Creating dataset with {len(valid_df)} valid audio files...")
         dataset = DatasetDict.from_csv({"train": temp_csv_path}, delimiter="|")
-        dataset = dataset.cast_column("audio", Audio(sampling_rate=44100))
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=24000))
 
         logger.info("Pushing dataset to Hugging Face Hub...")
         dataset.push_to_hub(
@@ -556,10 +579,49 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
 
 
 #MARK: Run initial processing
-def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
+def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
+    import gc
     print("Running initial processing...")
     dataspeech_dir = os.path.join(PROJECT_ROOT, "dataspeech", "dataspeech", "main.py")
     env = os.environ.copy()
+    
+    # Add preprocessing to ensure text data is valid
+    def preprocess_dataset():
+        try:
+            dataset = load_dataset(COMBINED_USERNAME_REPOID)
+            
+            # Function to ensure text is valid string
+            def clean_text(example):
+                if 'text' in example:
+                    # Convert to string if not already and handle None/nan values
+                    text = str(example['text']) if example['text'] is not None else ""
+                    # Remove any problematic characters and normalize
+                    text = text.encode('ascii', 'ignore').decode('ascii')
+                    example['text'] = text
+                return example
+            
+            # Apply cleaning to dataset
+            cleaned_dataset = dataset.map(
+                clean_text,
+                desc="Cleaning text data"
+            )
+            
+            # Push cleaned dataset back to hub
+            cleaned_dataset.push_to_hub(
+                COMBINED_USERNAME_REPOID,
+                private=True,
+                token=HUGGINGFACE_TOKEN
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error preprocessing dataset: {str(e)}")
+            return False
+
+    # Preprocess the dataset first
+    if not preprocess_dataset():
+        logger.error("Failed to preprocess dataset")
+        return False
+
     command = [
         "python", dataspeech_dir,
         COMBINED_USERNAME_REPOID,
@@ -569,31 +631,98 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
         "--cpu_num_workers", "1",
         "--repo_id", REPO_NAME,
         "--rename_column",
-        "--apply_squim_quality_estimation",
+        "--apply_squim_quality_estimation"
     ]
+    
     try:
         logger.info("Running initial dataset processing with DataSpeech...")
         logger.info(f"Using DataSpeech main.py at: {dataspeech_dir}")
         subprocess.run(command, check=True, env=env)
+        gc.collect()
 
-        # Cast the audio column before pushing to the hub
+        # Load dataset without streaming
+        logger.info(f"Loading and resampling dataset to {sample_rate}Hz...")
         dataset = load_dataset(COMBINED_USERNAME_REPOID)
-        dataset = dataset.cast_column("audio", Audio())
-        dataset.push_to_hub(COMBINED_USERNAME_REPOID, private=True, token=HUGGINGFACE_TOKEN)
-        print("Initial processing completed successfully.")
-        logger.info("Initial processing completed successfully.")
-        return True
+        gc.collect()
+        
+        # Function to safely resample audio
+        def resample_audio(example):
+            try:
+                audio = example['audio']
+                if audio['sampling_rate'] != sample_rate:
+                    # Load audio data
+                    audio_data = audio['array']
+                    orig_sr = audio['sampling_rate']
+                    
+                    # Resample using librosa
+                    import librosa
+                    resampled_audio = librosa.resample(
+                        y=audio_data, 
+                        orig_sr=orig_sr, 
+                        target_sr=sample_rate
+                    )
+                    
+                    # Update the audio dictionary
+                    example['audio'] = {
+                        'array': resampled_audio,
+                        'sampling_rate': sample_rate
+                    }
+                    gc.collect()
+                return example
+            except Exception as e:
+                logger.warning(f"Failed to resample audio: {str(e)}")
+                return example
+
+        logger.info("Resampling audio files...")
+        try:
+            resampled_dataset = DatasetDict()
+            for split in dataset:
+                logger.info(f"Processing split: {split}")
+                resampled_dataset[split] = dataset[split].map(
+                    resample_audio,
+                    desc=f"Resampling {split} split"
+                )
+
+            # Cast the audio column with the new sample rate
+            for split in resampled_dataset:
+                resampled_dataset[split] = resampled_dataset[split].cast_column(
+                    "audio", 
+                    Audio(sampling_rate=sample_rate)
+                )
+            gc.collect()
+
+            # Push the resampled dataset back to the hub
+            logger.info("Pushing resampled dataset to hub...")
+            resampled_dataset.push_to_hub(
+                COMBINED_USERNAME_REPOID,
+                private=True,
+                token=HUGGINGFACE_TOKEN
+            )
+            gc.collect()
+            
+            print("Initial processing completed successfully.")
+            logger.info("Initial processing completed successfully.")
+            return True
+
+        except Exception as e:
+            logger.error(f"An error occurred during dataset processing: {str(e)}")
+            logger.error("Try running with fewer processes or smaller batch size")
+            gc.collect()
+            return False
+        
     except subprocess.CalledProcessError as e:
         logger.error(f"An error occurred during initial processing:")
         logger.error(f"Command: {' '.join(e.cmd)}")
         logger.error(f"Return code: {e.returncode}")
         logger.error(f"Output: {e.output if hasattr(e, 'output') else 'No output'}")
         logger.error(f"Error: {e.stderr if hasattr(e, 'stderr') else 'No error output'}")
+        gc.collect()
         return False
 
 
+
 #MARK: Run metadata to text processing
-def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR):
+def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR, sample_rate):
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
     env = os.environ.copy()
@@ -611,7 +740,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         "--avoid_pitch_computation",
         "--apply_squim_quality_estimation",
         "--output_dir", UNFILTERED_PARQUET_DIR,
-        "--speaker_id_column_name", speaker_name
+        "--speaker_id_column_name", speaker_name,
     ]
     try:
         logger.info("Running metadata to text processing...")
@@ -621,7 +750,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         dataset = load_from_disk(UNFILTERED_PARQUET_DIR)
         
         # Cast the audio column before pushing to the hub
-        dataset = dataset.cast_column("audio", Audio())
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=sample_rate))
         dataset.push_to_hub(COMBINED_USERNAME_REPOID, private=True, token=HUGGINGFACE_TOKEN)
 
         return dataset
@@ -799,8 +928,12 @@ async def main():
     constants.WAVS_DIR_POSTDENOISE = WAVS_DIR_POSTDENOISE
     constants.COMBINED_USERNAME_REPOID = COMBINED_USERNAME_REPOID
     constants.FILTERED_PARQUET_AND_AUDIO = FILTERED_PARQUET_AND_AUDIO
+    
+    
+    config = load_yaml_config(args.config if args.config else None)
+    sample_rate = config['audio_processing']['sample_rate']
 
-
+    
     #MARK: Steps 1 and 2 (transcribe audio and convert JSON to SRT)
     if not SKIP_STEP_1_2:
         logger.info("Starting Step 1: Transcribe audio")
@@ -884,7 +1017,7 @@ async def main():
 
     #MARK: Step 5: Run initial processing
     logger.info("Starting Step 5: Run initial processing")
-    if not run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME):
+    if not run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
         logger.error("Failed to complete initial processing. Stopping execution.")
         return
 
@@ -893,10 +1026,11 @@ async def main():
     logger.info("Starting Step 6: Run metadata_to_text")
     bin_edges_path = os.path.join(PROJECT_ROOT, "computed_bin_edges.json")
     text_bins_path = os.path.join(PROJECT_ROOT, "dataspeech", "examples", "tags_to_annotations", "v02_text_bins.json")
-    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, text_bins_path, UNFILTERED_PARQUET_DIR)
+    dataset = run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, 
+                                text_bins_path, UNFILTERED_PARQUET_DIR, sample_rate)
     
     if dataset is not None:
-        save_dataset_to_parquet(dataset, UNFILTERED_PARQUET_DIR)
+        save_dataset_to_parquet(dataset, UNFILTERED_PARQUET_DIR, sample_rate)
         logger.info("Step 6 completed: Metadata processed to text and saved as Parquet files.")
     else:
         logger.error("Failed to process metadata to text. Skipping Parquet file creation.")
@@ -927,7 +1061,7 @@ async def main():
     original_dataset = load_dataset(COMBINED_USERNAME_REPOID)
 
     if os.path.exists(os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet")):
-        filtered_dataset = load_dataset("parquet", data_files=os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet"))
+        filtered_dataset = load_dataset("parquet", data_files=os.path.join(FILTERED_PARQUET_DIR, "dataset.parquet", ))
     elif os.path.exists(os.path.join(FILTERED_PARQUET_DIR, "train")):
         filtered_dataset = load_dataset("parquet", data_dir=FILTERED_PARQUET_DIR)
     else:
