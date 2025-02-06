@@ -94,6 +94,7 @@ triton==3.1.0
 typing-inspect==0.9.0
 typing_extensions==4.12.2
 tzdata==2024.2
+unsilence
 urllib3==2.2.3
 websockets==13.1
 xxhash==3.5.0
