@@ -1,5 +1,6 @@
-# This is a very sensitive script. It can also be extremely heavy to run if you're denoising larger files. If it fails
-# try changing the chink_size = rate * 30 to something like 15
+# THIS IS CRAP DONT USE IT
+# INSTEAD GO HERE AND USE THIS https://github.com/KimberleyJensen/Mel-Band-Roformer-Vocal-Model
+
 
 import os
 import numpy as np
