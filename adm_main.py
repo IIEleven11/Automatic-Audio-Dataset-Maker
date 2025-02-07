@@ -12,6 +12,7 @@ import whisper
 import logging
 import datetime
 import argparse
+import traceback
 import subprocess
 import numpy as np
 import pandas as pd
@@ -588,7 +589,8 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
     # Add preprocessing to ensure text data is valid
     def preprocess_dataset():
         try:
-            dataset = load_dataset(COMBINED_USERNAME_REPOID)
+            # Load dataset in streaming mode to handle large datasets
+            dataset = load_dataset(COMBINED_USERNAME_REPOID, streaming=True)
             
             # Function to ensure text is valid string
             def clean_text(example):
@@ -600,27 +602,52 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
                     example['text'] = text
                 return example
             
-            # Apply cleaning to dataset
-            cleaned_dataset = dataset.map(
-                clean_text,
-                desc="Cleaning text data"
-            )
+            # Process the dataset in smaller chunks
+            def process_in_chunks(dataset, chunk_size=1000):
+                processed_chunks = []
+                current_chunk = []
+                
+                for i, example in enumerate(dataset['train']):
+                    current_chunk.append(clean_text(example))
+                    
+                    if len(current_chunk) >= chunk_size:
+                        processed_chunks.append(current_chunk)
+                        current_chunk = []
+                        
+                        # Free up memory
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                
+                if current_chunk:  # Don't forget the last chunk
+                    processed_chunks.append(current_chunk)
+                
+                return processed_chunks
+
+            # Process the dataset in chunks
+            chunks = process_in_chunks(dataset)
+            
+            # Create a new dataset from the processed chunks
+            from datasets import Dataset
+            
+            processed_dataset = Dataset.from_dict({
+                key: [example[key] for chunk in chunks for example in chunk]
+                for key in chunks[0][0].keys()
+            })
             
             # Push cleaned dataset back to hub
-            cleaned_dataset.push_to_hub(
+            processed_dataset.push_to_hub(
                 COMBINED_USERNAME_REPOID,
                 private=True,
                 token=HUGGINGFACE_TOKEN
             )
+            
             return True
+            
         except Exception as e:
             logger.error(f"Error preprocessing dataset: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
-
-    # Preprocess the dataset first
-    if not preprocess_dataset():
-        logger.error("Failed to preprocess dataset")
-        return False
 
     command = [
         "python", dataspeech_dir,
