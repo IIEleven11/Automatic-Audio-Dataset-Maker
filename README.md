@@ -45,6 +45,7 @@ Curating datasets is extremely time consuming and tedious. I needed a way to aut
       - You can choose to skip the transcription step if you have your own. Make sure you place a metadata.csv, metadata_train.csv, and metadata_eval.csv in the appropriate folders.
       - Analyzing and computing the audio metrics can be a bit GPU intensive. My RTX 3090 can handle a few hours of data without a problem. I could see less capable hardware failing during this step. Any large amounts of data will require at least a 4090.
       -  You will end up with .parquet file containing a **curated** dataset including audio data. This will be on the huggingface hub under your username/repository name. As well as saved locally in the FILTERED_PARQUET folder.
+      -  There us a script in the tools folder ```convert_dataspeech.py``` you can input the correct paths and run it to automatically convert the parquet file/s into metadata and get the wavs in a folder.
 
 #### Note: *There are many different dataset formats. Each model will be slightly different. You can easily view, manipulate, and convert the .parquet dataset within an editor like vscode. I use the DataWrangler extension but there are many other ways.*
 
