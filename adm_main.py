@@ -19,7 +19,6 @@ import pandas as pd
 from tqdm import tqdm
 import soundfile as sf
 from pathlib import Path
-from deepgram import Deepgram
 from pydub import AudioSegment
 import tools.constants as constants
 from datasets.table import embed_table_storage
@@ -70,22 +69,6 @@ if HUGGINGFACE_TOKEN:
         logger.error(f"Error verifying Hugging Face token: {e}")
         logger.error("Please check your token and try again.")
         HUGGINGFACE_TOKEN = input("Enter your Hugging Face access token: ")
-
-
-DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
-if not DEEPGRAM_API_KEY:
-    DEEPGRAM_API_KEY = input("Enter your Deepgram API key: ")
-
-dg_client = Deepgram(DEEPGRAM_API_KEY)
-options = {
-    "model": "whisper",
-    "punctuate": True,
-    "utterances": True,
-    "paragraphs": True,
-    "smart_format": True,
-    "filler_words": True
-}
-
 
 def load_yaml_config(yaml_path):
     """Load configuration from YAML file."""
@@ -142,15 +125,17 @@ def collect_USER_INPUTS(yaml_path=None):
         NUM_GPUS = None
         
         if not SKIP_STEP_1_2:
-            while True:
-                TRANSCRIPTION_CHOICE = input("Choose transcription method (1 for local Whisper, 2 for Deepgram API): ").strip()
-                if TRANSCRIPTION_CHOICE in ['1', '2']:
-                    break
-                logger.info("Invalid choice. Please enter 1 or 2.")
-
-            if TRANSCRIPTION_CHOICE == '1':
-                available_gpus = torch.cuda.device_count()
-                if available_gpus > 0:
+            # Always use Whisper (no need to ask for choice)
+            TRANSCRIPTION_CHOICE = '1'  # Whisper is now the only option
+            available_gpus = torch.cuda.device_count()
+            if available_gpus > 0:
+                if yaml_path and Path(yaml_path).exists():
+                    NUM_GPUS = config['audio_processing']['num_gpus']
+                    if NUM_GPUS is None:
+                        NUM_GPUS = available_gpus
+                    elif not (1 <= NUM_GPUS <= available_gpus):
+                        raise ValueError(f"num_gpus must be between 1 and {available_gpus}")
+                else:
                     logger.info(f"\nDetected {available_gpus} GPU(s)")
                     while True:
                         gpu_input = input(f"Enter number of GPUs to use (1-{available_gpus}, or press Enter for all): ").strip()
@@ -184,38 +169,6 @@ def collect_USER_INPUTS(yaml_path=None):
         'HUGGINGFACE_TOKEN': HUGGINGFACE_TOKEN
     }
     return inputs
-
-
-#MARK: Transcribe audio
-async def transcribe_audio(file_path, dg_client, options, JSON_DIR_PATH, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            with open(file_path, "rb") as audio_file:
-                audio_source = {"buffer": audio_file, "mimetype": "audio/wav"}
-                response = await dg_client.transcription.prerecorded(audio_source, options)
-                logger.info(f"Transcription response for {file_path}:", json.dumps(response, indent=2))
-
-                base_name = os.path.splitext(os.path.basename(file_path))[0]
-                json_file_name = f"{base_name}.json"
-                json_file_path = os.path.join(JSON_DIR_PATH, json_file_name)
-
-                with open(json_file_path, "w") as json_file:
-                    json.dump(response, json_file, indent=2)
-
-                logger.info(f"Transcription saved to {json_file_path}")
-                return
-        except RequestException as e:
-            logger.error(f"Connection error while processing {file_path}: {e}")
-            if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Exponential backoff
-                logger.info(f"Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
-            else:
-                logger.info(f"Failed to process {file_path} after {max_retries} attempts.")
-        except Exception as e:
-            logger.error(f"An error occurred while processing {file_path}: {e}")
-            break
-
 
 def format_time(seconds):
     milliseconds = int((seconds - int(seconds)) * 1000)
@@ -969,32 +922,16 @@ async def main():
         
         audio_files = [os.path.join(AUDIO_DIR_PATH, f) for f in os.listdir(AUDIO_DIR_PATH) if f.endswith('.wav')]
 
-        if USER_INPUTS['TRANSCRIPTION_CHOICE'] == '1':
-            logger.info("Using local Whisper model for transcription...")
-            for audio_file in tqdm(audio_files, desc="Transcribing with Whisper"):
-                base_name = os.path.splitext(os.path.basename(audio_file))[0]
-                srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
-            
-                if os.path.exists(srt_file_path):
-                    tqdm.write(f"Skipping {base_name} - SRT file already exists")
-                    continue
+        logger.info("Using Whisper model for transcription...")
+        for audio_file in tqdm(audio_files, desc="Transcribing with Whisper"):
+            base_name = os.path.splitext(os.path.basename(audio_file))[0]
+            srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
+        
+            if os.path.exists(srt_file_path):
+                tqdm.write(f"Skipping {base_name} - SRT file already exists")
+                continue
 
-                transcribe_with_whisper(audio_file, SRT_DIR_PATH, num_gpus=USER_INPUTS['NUM_GPUS'])
-
-        else:
-            logger.info("Using Deepgram API for transcription...")
-            for audio_file in audio_files:
-                await transcribe_audio(audio_file, dg_client, options, JSON_DIR_PATH)
-
-            logger.info("Converting JSON responses to SRT format...")
-            json_files = [f for f in os.listdir(JSON_DIR_PATH) if f.endswith('.json')]
-            
-            for json_file in json_files:
-                json_path = os.path.join(JSON_DIR_PATH, json_file)
-                if process_transcription(json_path, SRT_DIR_PATH):
-                    logger.info(f"Successfully processed {json_file}")
-                else:
-                    logger.warning(f"Failed to process {json_file}")
+            transcribe_with_whisper(audio_file, SRT_DIR_PATH, num_gpus=USER_INPUTS['NUM_GPUS'])
 
         logger.info("Step 1 completed: Audio transcription finished")
 
