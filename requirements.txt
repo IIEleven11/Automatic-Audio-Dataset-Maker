@@ -44,7 +44,7 @@ multiprocess==0.70.16
 mypy-extensions==1.0.0
 networkx==3.4.2
 numba==0.60.0
-numpy==1.23.5
+numpy==1.24
 nvidia-cublas-cu12==12.4.5.8
 nvidia-cuda-cupti-cu12==12.4.127
 nvidia-cuda-nvrtc-cu12==12.4.127
