@@ -12,6 +12,5 @@ audio_processing:
 
 dataset:
   eval_percentage: 10   # Percentage of data for evaluation (normal ranges around 10-15%)
-  dataset:
   speaker_name_option: "filename"  # Can be "single" or "filename". Use single if there is only one speaker. Use filename if the speaker_name is in the filename and you want to represent this in the dataset
   speaker_name: "John Doe"  # Only used if speaker_name_option is "single"
