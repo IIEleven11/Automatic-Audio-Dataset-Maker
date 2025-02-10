@@ -1,5 +1,5 @@
 # Audio Dataset Maker
-
+Package conflict with windows machines and pesq/brouhaha. Suggest using WSL instead.
 Curating datasets is extremely time consuming and tedious. I needed a way to automate this process as much as possible. 
 
 **__Goal__**: Automate the creation and curation of an audio dataset for fine-tuneing/training text-to-speech models.
