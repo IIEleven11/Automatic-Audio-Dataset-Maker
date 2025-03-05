@@ -1,24 +1,32 @@
 # Audio Dataset Maker
-Package conflict with windows machines and pesq/brouhaha. Suggest using WSL instead.
 Curating datasets is extremely time consuming and tedious. I needed a way to automate this process as much as possible. 
 
-**__Goal__**: Automate the creation and curation of an audio dataset for fine-tuneing/training text-to-speech models.
+# Automatic Audio Dataset Maker
 
-## What this project does: ##
-   1. Transcription using whisper/~~deepgram. I am using their API because it is significantly faster. Using whipser is now an option.~~ (With the release of whisper turbo the deepgram implementation is now obsolete.)
-   2. Segmentation and forcing a gaussian distribution of text/audio data segments between 2-18 seconds long.
-   3. Creation of metadata according to the segmented audio. This is the transcriptions to pair with the audio files.
-   4. Analyzing the audio using the SI-SDR, PESQ, STOI, c50, and SNR metrics.
-   5. Filters the dataset, removing any audio that does not meet the threshold according to those metrics
-   6. Creates a Huggingface Hub dataset repository as well as places the dataset on your drive
+Automatic Audio Dataset Maker is a tool designed to automate the creation and curation of high-quality audio datasets, primarily for training text-to-speech models.
 
-> Automation requires a high degree of reliability and consistency to be effective. Unfortunately, current speaker diarization technology does not meet the rigorous standards necessary for fully automated transcription. For optimal results, it is recommended to use this project with a single speaker dataset.
+## Key Features
 
-> While the script does include some speaker diarization options, their use is strongly discouraged. Attempting speaker diarization with the current technology will likely create more work than it saves due to the need for manual correction and verification.
+### Audio Processing
+- Transcribes audio using local whisper models
+- Segments audio n seconds of chunks with a gaussian distribution
+- Creates metadata/transcriptions paired with audio segments
 
+### Quality Control
+- Analyzes audio using multiple metrics:
+  - SI-SDR (Scale-Invariant Signal-to-Distortion Ratio)
+  - PESQ (Perceptual Evaluation of Speech Quality)
+  - STOI (Short-Time Objective Intelligibility)
+  - C50 (Clarity Index)
+  - SNR (Signal-to-Noise Ratio)
+- Filters out audio that doesn't meet quality thresholds
+
+### Dataset Management
+- Creates/Saves dataset to the huggingface hub as well as a local copy.
+- Integrates with DataSpeech library for additional audio annotations and natural language descriptions
 
 ## Installation
-
+-NOTE: Theres a package conflict on windows machines with pesq/brouhaha. I suggest using WSL/Linux instead.
 1. conda create -n audiodatasetmaker python==3.10
 2. conda activate audiodatasetmaker
 3. pip install -r requirements.txt
