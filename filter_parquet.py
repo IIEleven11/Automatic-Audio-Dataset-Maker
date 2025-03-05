@@ -2,18 +2,18 @@ import os
 import glob
 import pandas as pd
 
+
+PESQ_THRESHOLD = 3.5
+SNR_THRESHOLD = 55
+STOI_THRESHOLD = 0.98
+C50_THRESHOLD = 59.75
+SI_SDR_THRESHOLD = 27.4
+
 def main():
     project_root = os.path.dirname(os.path.abspath(__file__))
     UNFILTERED_PARQUET_DIR = os.path.join(project_root, "UNFILTERED_PARQUET")
     FILTERED_PARQUET_DIR = os.path.join(project_root, "FILTERED_PARQUET")
     os.makedirs(FILTERED_PARQUET_DIR, exist_ok=True)
-
-    # Define filtering thresholds
-    pesq_threshold = 3.5
-    snr_threshold = 30
-    stoi_threshold = 0.95
-    c50_threshold = 55
-    si_sdr_threshold = 15
 
     # Find all Parquet files in the converted directory
     parquet_files = glob.glob(os.path.join(UNFILTERED_PARQUET_DIR, '**', '*.parquet'), recursive=True)
@@ -30,11 +30,11 @@ def main():
         print(f"First few rows of {parquet_file}:")
         print(df.head())
         df_filtered = df[
-            (df['pesq'] > pesq_threshold) &
-            (df['snr'] > snr_threshold) &
-            (df['stoi'] > stoi_threshold) &
-            (df['c50'] > c50_threshold) &
-            (df['si-sdr'] > si_sdr_threshold)
+            (df['pesq'] > PESQ_THRESHOLD) &
+            (df['snr'] > SNR_THRESHOLD) &
+            (df['stoi'] > STOI_THRESHOLD) &
+            (df['c50'] > C50_THRESHOLD) &
+            (df['si-sdr'] > SI_SDR_THRESHOLD)
         ]
         if df_filtered.empty:
             print(f"No rows passed the filters for {parquet_file}")

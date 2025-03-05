@@ -1,5 +1,6 @@
 import os
 import re
+import gc
 import csv
 import json
 import time
@@ -44,17 +45,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-import gc
-import torch
-
 gc.enable()
-
-
 if torch.cuda.is_available():
     torch.cuda.empty_cache()
-
-
-
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -78,7 +71,7 @@ def load_yaml_config(yaml_path):
     if 'audio_processing' not in config:
         config['audio_processing'] = {}
     if 'sample_rate' not in config['audio_processing']:
-        config['audio_processing']['sample_rate'] = 24000  # Default sample rate
+        config['audio_processing']['sample_rate'] = 22050  # Default sample rate
     return config
 
 
@@ -221,56 +214,6 @@ def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
         return True
     except Exception as e:
         logger.error(f"Error transcribing {audio_file_path}: {e}")
-        return False
-
-
-#MARK: Generate SRT
-
-
-
-
-#MARK: Process transcription
-def process_transcription(json_path, SRT_DIR_PATH):
-    """
-    Convert Deepgram JSON response to SRT format.
-    """
-    try:
-        def generate_srt(captions):
-            srt_content = ""
-            for i, (start, end, text) in enumerate(captions, 1):
-                srt_content += f"{i}\n{format_time(start)} --> {format_time(end)}\n{text}\n\n"
-            return srt_content
-        
-        with open(json_path, 'r') as f:
-            dg_response = json.load(f)
-        
-        transcription = DeepgramConverter(dg_response)
-        line_length = 250
-        lines = transcription.get_lines(line_length)
-        captions = []
-
-
-        for line_group in lines:
-            for line in line_group:
-                start_time = line.get('start')
-                end_time = line.get('end')
-                text = line.get('punctuated_word')
-                if start_time is not None and end_time is not None and text is not None:
-                    captions.append((start_time, end_time, text))
-
-        srt_content = generate_srt(captions)
-
-        base_name = os.path.splitext(os.path.basename(json_path))[0]
-        srt_file_path = os.path.join(SRT_DIR_PATH, f"{base_name}.srt")
-        
-        with open(srt_file_path, 'w', encoding='utf-8') as f:
-            f.write(srt_content)
-            
-        logger.info(f"Created SRT file: {srt_file_path}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error processing transcription for {json_path}: {str(e)}")
         return False
 
 
@@ -509,7 +452,7 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
     try:
         logger.info(f"Creating dataset with {len(valid_df)} valid audio files...")
         dataset = DatasetDict.from_csv({"train": temp_csv_path}, delimiter="|")
-        dataset = dataset.cast_column("audio", Audio(sampling_rate=24000))
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=22050))
 
         logger.info("Pushing dataset to Hugging Face Hub...")
         dataset.push_to_hub(
@@ -764,75 +707,6 @@ def filter_parquet_files(UNFILTERED_PARQUET_DIR):
         logger.error(f"Output: {e.stdout}")
         logger.error(f"Error: {e.stderr}")
         return False
-        
-
-#MARK: Denoise and normalize audio (shitty function will need to be fixed)
-def denoise_and_normalize(input_folder, output_folder, dataset_name):
-    from tools.denoiser import denoise_audio
-
-    logger.info("Starting denoising and normalizing process...")
-    os.makedirs(output_folder, exist_ok=True)
-    wav_files = [f for f in os.listdir(input_folder) if f.endswith('.wav')]
-    successful_files = []
-
-    for wav_file in tqdm(wav_files, desc="Processing audio files"):
-        try:
-            input_path = os.path.join(input_folder, wav_file)
-            output_path = os.path.join(output_folder, wav_file)
-            if not os.path.exists(input_path) or os.path.getsize(input_path) == 0:
-                logger.warning(f"Warning: Empty or missing file {wav_file}. Skipping.")
-                continue
-
-            audio_data, sample_rate = sf.read(input_path)
-            if len(audio_data) < sample_rate * 0.1:  # Minimum 100ms of audio
-                logger.warning(f"Warning: Audio file {wav_file} is too short. Copying without processing.")
-                sf.write(output_path, audio_data, sample_rate)
-                successful_files.append(wav_file)
-                continue
-
-            try:
-                denoised_audio = denoise_audio(audio_data, sample_rate)
-                sf.write(output_path, denoised_audio, sample_rate)
-                successful_files.append(wav_file)
-            except Exception as e:
-                logger.warning(f"Warning: Error denoising {wav_file}: {str(e)}. Using original audio.")
-                sf.write(output_path, audio_data, sample_rate)
-                successful_files.append(wav_file)
-        except Exception as e:
-            logger.error(f"Error processing {wav_file}: {str(e)}")
-            continue
-
-    logger.info(f"Denoising completed! Successfully processed {len(successful_files)} out of {len(wav_files)} files.")
-
-
-    #MARK: Safe (in theory) normalize audio (Note- Communism works in theory too)
-    def safe_normalize_audio(input_file, output_file):
-        try:
-            audio_data, sample_rate = sf.read(input_file)
-            if len(audio_data) < sample_rate * 0.1:  # Too short to normalize
-                sf.write(output_file, audio_data, sample_rate)
-                return True
-            return normalize_audio(input_file, output_file)
-        except Exception as e:
-            logger.error(f"Error normalizing {os.path.basename(input_file)}: {str(e)}")
-            # Copy original file if normalization fails
-            try:
-                if input_file != output_file:
-                    audio_data, sample_rate = sf.read(input_file)
-                    sf.write(output_file, audio_data, sample_rate)
-                return True
-            except:
-                return False
-
-    normalized_files = []
-    for wav_file in tqdm(successful_files, desc="Normalizing"):
-        input_file = os.path.join(output_folder, wav_file)
-        if safe_normalize_audio(input_file, input_file):  # Normalize in place
-            normalized_files.append(wav_file)
-
-    logger.info(f"Processing completed! Successfully processed {len(normalized_files)} out of {len(wav_files)} files.")
-    return normalized_files if normalized_files else None
-
 
 #MARK: Update CSV file paths
 def update_csv_file_paths(csv_file_path, old_dir, new_dir):
@@ -877,9 +751,78 @@ def push_to_hub_with_retry(dataset, repo_id, max_retries=3, delay=5):
                 logger.info(f"Token length: {len(HUGGINGFACE_TOKEN) if HUGGINGFACE_TOKEN else 'N/A'}")
                 raise
 
+#MARK: Get filtered indices
+def get_filtered_indices(filtered_parquet_dir):
+    """Get the indices of filtered data from parquet files."""
+    if os.path.exists(os.path.join(filtered_parquet_dir, "dataset.parquet")):
+        filtered_dataset = load_dataset("parquet", data_files=os.path.join(filtered_parquet_dir, "dataset.parquet"))
+    elif os.path.exists(os.path.join(filtered_parquet_dir, "train")):
+        filtered_dataset = load_dataset("parquet", data_dir=filtered_parquet_dir)
+    else:
+        data_files = [os.path.join(filtered_parquet_dir, f) for f in os.listdir(filtered_parquet_dir) if f.endswith('.parquet')]
+        filtered_dataset = load_dataset("parquet", data_files=data_files)
+    
+    return set(filtered_dataset['train']['__index_level_0__'])
+
+#MARK: Create filtered dataset
+def create_filtered_dataset(original_dataset, filtered_indices):
+    """Create a new dataset containing only the filtered indices."""
+    def filter_fn(example, idx):
+        return idx in filtered_indices
+
+    return original_dataset.filter(
+        filter_fn,
+        with_indices=True
+    )
+    
 
 #MARK: Main function
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, help='Path to config file')
+    return parser.parse_args()
+
 async def main():
+    args = parse_args()
+    config = load_yaml_config(args.config if args.config else None)
+    
+    if config['audio_processing'].get('refilter', False):
+        logger.info("Refiltering mode activated - skipping to filtering step...")
+        try:
+            HF_USERNAME = config['huggingface']['username']
+            REPO_NAME = config['huggingface']['repo_name']
+            COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
+            UNFILTERED_PARQUET_DIR = os.path.join(PROJECT_ROOT, "UNFILTERED_PARQUET")
+            FILTERED_PARQUET_DIR = os.path.join(PROJECT_ROOT, "FILTERED_PARQUET")
+            
+            sample_rate = config['audio_processing']['sample_rate']
+            logger.info("Starting filtering process with updated metrics...")
+            data_passed_filters = filter_parquet_files(UNFILTERED_PARQUET_DIR)
+            
+            if not data_passed_filters:
+                logger.error("No audio files passed the quality filters.")
+                logger.error("Please adjust the filtering thresholds in filter_parquet.py")
+                return
+            
+            logger.info("Loading original dataset...")
+            original_dataset = load_dataset(COMBINED_USERNAME_REPOID)
+            
+            logger.info("Creating filtered dataset...")
+            filtered_indices = get_filtered_indices(FILTERED_PARQUET_DIR)
+            final_dataset = create_filtered_dataset(original_dataset, filtered_indices)
+            
+            logger.info("Pushing filtered dataset to hub...")
+            push_to_hub_with_retry(final_dataset, COMBINED_USERNAME_REPOID)
+            logger.info(f"Filtered dataset successfully pushed to {COMBINED_USERNAME_REPOID}")
+            
+            return
+            
+        except Exception as e:
+            logger.error(f"Error during refiltering: {str(e)}")
+            raise
+    
+
+    logger.info("Starting full dataset processing...")
     parser = argparse.ArgumentParser(description='Audio Dataset Maker')
     parser.add_argument('--config', type=str, help='Path to YAML configuration file')
     args = parser.parse_args()
@@ -888,8 +831,7 @@ async def main():
     AUDIO_DIR_PATH = os.path.join(PROJECT_ROOT, "RAW_AUDIO")
     JSON_DIR_PATH = os.path.join(PROJECT_ROOT, "JSON_DIR_PATH")
     SRT_DIR_PATH = os.path.join(PROJECT_ROOT, "SRTS")
-    WAVS_DIR_PREDENOISE = os.path.join(PROJECT_ROOT, "WAVS_DIR_PREDENOISE")
-    WAVS_DIR_POSTDENOISE = os.path.join(PROJECT_ROOT, "WAVS_DIR_POSTDENOISE")
+    WAVS_DIR = os.path.join(PROJECT_ROOT, "WAVS")
     PARENT_CSV = os.path.join(PROJECT_ROOT, "PARENT_CSV")
     TRAIN_DIR_PATH = os.path.join(PROJECT_ROOT, "METADATA")
     EVAL_DIR_PATH = os.path.join(PROJECT_ROOT, "METADATA")
@@ -904,8 +846,7 @@ async def main():
     EVAL_PERCENTAGE = USER_INPUTS['EVAL_PERCENTAGE']
     COMBINED_USERNAME_REPOID = f"{HF_USERNAME}/{REPO_NAME}"
     constants.PROJECT_ROOT = PROJECT_ROOT
-    constants.WAVS_DIR_PREDENOISE = WAVS_DIR_PREDENOISE
-    constants.WAVS_DIR_POSTDENOISE = WAVS_DIR_POSTDENOISE
+    constants.WAVS_DIR = WAVS_DIR  # Updated constant name
     constants.COMBINED_USERNAME_REPOID = COMBINED_USERNAME_REPOID
     constants.FILTERED_PARQUET_AND_AUDIO = FILTERED_PARQUET_AND_AUDIO
     
@@ -938,45 +879,14 @@ async def main():
 
     #MARK: Step 3: Segment audio and create metadata
     logger.info("Starting Step 3: Segment audio and create metadata")
-    segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR_PREDENOISE, PARENT_CSV, SPEAKER_NAME)
+    segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR, PARENT_CSV, SPEAKER_NAME)
     logger.info("Step 3 completed: Audio segmented and metadata created")
 
-
-    #MARK: Step 4: Split dataset / denoise / normalize / push to hub
-    logger.info("Starting Step 4: Split dataset, denoise, and push to hub")
+    #MARK: Step 4: Split dataset and push to hub
+    logger.info("Starting Step 4: Split dataset and push to hub")
     split_dataset(CSV_FILE_PATH, EVAL_PERCENTAGE, TRAIN_DIR_PATH, EVAL_DIR_PATH)
-
-    if USER_INPUTS['SKIP_DENOISE_NORMALIZE']:
-        logger.info("Skipping denoising and normalizing as requested...")
-
-        os.makedirs(WAVS_DIR_POSTDENOISE, exist_ok=True)
-        for wav_file in tqdm(os.listdir(WAVS_DIR_PREDENOISE), desc="Copying audio files"):
-            if wav_file.endswith('.wav'):
-                src = os.path.join(WAVS_DIR_PREDENOISE, wav_file)
-                dst = os.path.join(WAVS_DIR_POSTDENOISE, wav_file)
-                try:
-                    shutil.copy2(src, dst)
-                except Exception as e:
-                    logger.error(f"Error copying {wav_file}: {str(e)}")
-    else:
-        processed_files = denoise_and_normalize(WAVS_DIR_PREDENOISE, WAVS_DIR_POSTDENOISE, COMBINED_USERNAME_REPOID)
-        if not processed_files:
-            logger.warning("Warning: Some files failed during processing. Continuing with successfully processed files...")
-
-        # Update CSV to only include successfully processed files
-        df = pd.read_csv(CSV_FILE_PATH, delimiter='|')
-        if processed_files:
-            df = df[df['audio'].apply(lambda x: os.path.basename(x) in processed_files)]
-
-        if len(df) == 0:
-            logger.error("Error: No valid files remaining after processing.")
-            return
-        df.to_csv(CSV_FILE_PATH, sep='|', index=False)
-        logger.info(f"Updated CSV file to include {len(df)} valid entries.")
-
-    update_csv_file_paths(CSV_FILE_PATH, WAVS_DIR_PREDENOISE, WAVS_DIR_POSTDENOISE)
     create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID)
-    logger.info("Step 4 completed: Dataset split, denoised, normalized, and pushed to the HuggingfaceHub")
+    logger.info("Step 4 completed: Dataset split and pushed to the HuggingfaceHub")
 
 
     #MARK: Step 5: Run initial processing
@@ -1046,7 +956,7 @@ async def main():
 
     logger.info("Pushing filtered dataset to hub...")
     push_to_hub_with_retry(final_dataset, COMBINED_USERNAME_REPOID)
-    logger.info(f"Filtered dataset successfully pushed to Hugging Face Hub under {COMBINED_USERNAME_REPOID}.")
+    logger.info(f"Filtered dataset saved to {FILTERED_PARQUET_DIR} successfully pushed to Hugging Face Hub under {COMBINED_USERNAME_REPOID}.")
 
 
 if __name__ == "__main__":

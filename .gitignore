@@ -162,11 +162,17 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
-oRIGINALAUDIO
-AudioDatasetMaker
-1RAW_AUDIO
-SRTS1
-WAVS_DIR_POSTDENOISE1
-WAVS_DIR_PREDENOISE1
 computed_bin_edges.json
-adm/new
+WAVS/*
+SRTS/*
+RAW_AUDIO/*
+PARENT_CSV/*
+METADATA/*
+FILTERED_PARQUET/*
+UNFILTERED_PARQUET/*
+logs/*
+process_dataset.py
+getdataset.py
+/Mel-Band-Roformer-Vocal-Model
+
+
