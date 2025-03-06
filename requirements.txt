@@ -421,14 +421,15 @@ tokenizers==0.21.0
 toml==0.10.2
 tomli==2.0.2
 tomlkit==0.12.0
-torch==2.5.1+cu121
+--index-url https://download.pytorch.org/whl/nightly/cu124
+torch
+torchaudio
+torchvision
 torch-audiomentations==0.12.0
 torch_pitch_shift==1.2.5
-torchaudio==2.5.1+cu121
 torchinfo==1.8.0
 torchmetrics==1.6.1
 torchutil==0.0.14
-torchvision==0.20.1+cu121
 tornado==6.4.2
 tqdm==4.67.1
 traitlets==5.14.3
