@@ -1,16 +1,8 @@
 from datasets import load_dataset, Audio
 from multiprocess import set_start_method
-from dataspeech.dataspeech.gpu_enrichments.pitch import pitch_apply
-from dataspeech.dataspeech.gpu_enrichments.snr_and_reverb import snr_apply
-from dataspeech.dataspeech.gpu_enrichments.squim import squim_apply
-from dataspeech.dataspeech.cpu_enrichments.rate import rate_apply
-import numpy as np
+from dataspeech import rate_apply, pitch_apply, snr_apply, squim_apply
 import torch
 import argparse
-import logging
-import time
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 if __name__ == "__main__":
@@ -56,35 +48,20 @@ if __name__ == "__main__":
             batch_size=args.batch_size,
             with_rank=True if torch.cuda.device_count()>0 else False,
             num_proc=torch.cuda.device_count()*args.num_workers_per_gpu_for_squim if torch.cuda.device_count()>0 else args.cpu_num_workers,
-            # remove_columns=[audio_column_name], # tricks to avoid rewritting audio
+            remove_columns=[audio_column_name], # tricks to avoid rewritting audio
             fn_kwargs={"audio_column_name": audio_column_name,},
         )
- 
-    try:
-        logger.info("Starting pitch computation...")
-        logger.info(f"Dataset size: {len(dataset)}")
-        logger.info(f"Number of workers: {args.cpu_num_workers}")
-        logger.info(f"GPU count: {torch.cuda.device_count()}")
-        
-        start_time = time.time()
-        pitch_dataset = dataset.cast_column(audio_column_name, Audio(sampling_rate=16_000)).map(
-            pitch_apply,
-            # remove_columns=[audio_column_name],
-            num_proc=args.cpu_num_workers,
-            desc="Compute pitch",
-            writer_batch_size=100,
-        )
-        duration = time.time() - start_time
-        logger.info(f"Pitch computation completed in {duration:.2f} seconds")
-    except Exception as e:
-        logger.error(f"Error during pitch computation: {str(e)}")
-        logger.warning("Continuing with empty pitch values")
-        pitch_dataset = dataset.map(
-            lambda x: {"pitch": np.zeros(1), "periodicity": np.zeros(1)},
-            # remove_columns=[audio_column_name],
-            desc="Creating empty pitch values"
-        )
 
+    print("Compute pitch")
+    pitch_dataset = dataset.cast_column(audio_column_name, Audio(sampling_rate=16_000)).map(
+        pitch_apply,
+        batched=True,
+        batch_size=args.batch_size,
+        with_rank=True if torch.cuda.device_count()>0 else False,
+        num_proc=torch.cuda.device_count()*args.num_workers_per_gpu_for_pitch if torch.cuda.device_count()>0 else args.cpu_num_workers,
+        remove_columns=[audio_column_name], # tricks to avoid rewritting audio
+        fn_kwargs={"audio_column_name": audio_column_name, "penn_batch_size": args.penn_batch_size},
+    )
 
     print("Compute snr and reverb")
     snr_dataset = dataset.map(
@@ -93,7 +70,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         with_rank=True if torch.cuda.device_count()>0 else False,
         num_proc=torch.cuda.device_count()*args.num_workers_per_gpu_for_snr if torch.cuda.device_count()>0 else args.cpu_num_workers,
-        # remove_columns=[audio_column_name], # tricks to avoid rewritting audio
+        remove_columns=[audio_column_name], # tricks to avoid rewritting audio
         fn_kwargs={"audio_column_name": audio_column_name},
     )
     
@@ -112,7 +89,7 @@ if __name__ == "__main__":
             with_rank=False,
             num_proc=args.cpu_num_workers,
             writer_batch_size= args.cpu_writer_batch_size,
-            # remove_columns=[audio_column_name], # tricks to avoid rewritting audio
+            remove_columns=[audio_column_name], # tricks to avoid rewritting audio
             fn_kwargs={"audio_column_name": audio_column_name, "text_column_name": text_column_name},
         )
     

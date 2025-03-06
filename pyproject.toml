@@ -1,0 +1,20 @@
+[project]
+name = "automatic-audio-dataset-maker"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "accelerate>=1.4.0",
+    "bitsandbytes>=0.45.3",
+    "demucs>=4.0.1",
+    "g2p>=2.2.0",
+    "librosa>=0.10.2.post1",
+    "noisereduce>=3.0.3",
+    "openai-whisper>=20240930",
+    "penn>=0.0.14",
+    "pydub>=0.25.1",
+    "python-dotenv>=1.0.1",
+    "soundfile>=0.13.1",
+    "transformers>=4.49.0",
+]
