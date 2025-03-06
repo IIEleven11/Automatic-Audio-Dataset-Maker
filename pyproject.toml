@@ -7,7 +7,6 @@ requires-python = ">=3.10"
 dependencies = [
     "accelerate>=1.4.0",
     "bitsandbytes>=0.45.3",
-    "demucs>=4.0.1",
     "g2p>=2.2.0",
     "librosa>=0.10.2.post1",
     "noisereduce>=3.0.3",
