@@ -105,7 +105,6 @@ gruut_lang_de==2.0.1
 gruut_lang_en==2.0.1
 gruut_lang_es==2.0.1
 gruut_lang_fr==2.0.2
-gyp==0.1
 h11==0.14.0
 h2==4.1.0
 hangul-romanize==0.1.0
