@@ -18,7 +18,6 @@ deepgram-captions==1.2.0
 deepgram-sdk==2.12.0
 deprecation==2.1.0
 dill==0.3.8
--e ./dataspeech
 exceptiongroup==1.2.2
 filelock==3.16.1
 frozenlist==1.5.0
@@ -44,7 +43,7 @@ multiprocess==0.70.16
 mypy-extensions==1.0.0
 networkx==3.4.2
 numba==0.60.0
-numpy==1.24
+numpy==1.26.4
 nvidia-cublas-cu12==12.4.5.8
 nvidia-cuda-cupti-cu12==12.4.127
 nvidia-cuda-nvrtc-cu12==12.4.127
@@ -86,9 +85,12 @@ sympy==1.13.1
 threadpoolctl==3.5.0
 tiktoken==0.8.0
 tokenizers==0.20.1
-torch==2.5.1
-torchaudio==2.5.1
-tqdm==4.66.6
+--index-url https://download.pytorch.org/whl/nightly/cu124
+torch
+torchaudio
+torchvision
+-e ./dataspeech
+tqdm==4.67.1
 transformers==4.46.1
 triton==3.1.0
 typing-inspect==0.9.0

@@ -23,12 +23,8 @@ from pathlib import Path
 from pydub import AudioSegment
 import tools.constants as constants
 from datasets.table import embed_table_storage
-from deepgram_captions import DeepgramConverter
-from requests.exceptions import RequestException
-from tools.normalize_folder import normalize_audio
 from datasets.features.features import require_decoding
 from datasets.utils.py_utils import convert_file_size_to_int
-from datasets.download.streaming_download_manager import xgetsize
 from datasets import load_dataset, Audio, load_from_disk, DatasetDict
 
 
