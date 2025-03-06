@@ -16,7 +16,6 @@ def squim_apply(batch, rank=None, audio_column_name="audio"):
         model.to(device)
     else:
         device = "cpu"
-        
     if isinstance(batch[audio_column_name], list):  
         sdr = []
         pesq = []
@@ -43,3 +42,4 @@ def squim_apply(batch, rank=None, audio_column_name="audio"):
         batch["stoi"] = stoi_sample.cpu()[0]
         # TODO
     return batch
+
