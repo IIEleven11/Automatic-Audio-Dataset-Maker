@@ -1,8 +1,7 @@
-import os
+
 import glob
 import pandas as pd
-
-
+import os
 PESQ_THRESHOLD = 3.5
 SNR_THRESHOLD = 55
 STOI_THRESHOLD = 0.98
