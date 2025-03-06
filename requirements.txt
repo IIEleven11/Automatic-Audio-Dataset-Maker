@@ -63,7 +63,6 @@ deepspeed==0.12.4
 defusedxml==0.7.1
 dill==0.3.8
 distro==1.9.0
-distro-info==1.1+ubuntu0.2
 dnspython==2.7.0
 docker==7.1.0
 docker-pycreds==0.4.0
