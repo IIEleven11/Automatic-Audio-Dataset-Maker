@@ -2,7 +2,7 @@ datasets[audio]
 https://github.com/marianne-m/brouhaha-vad/archive/main.zip
 penn
 g2p
-https://github.com/facebookresearch/demucs/archive/main.zip
+pip+git://github.com/facebookresearch/demucs.git
 transformers
 accelerate
 bitsandbytes
