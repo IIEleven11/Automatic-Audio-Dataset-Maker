@@ -2,11 +2,11 @@
 import glob
 import pandas as pd
 import os
-PESQ_THRESHOLD = 3.5
-SNR_THRESHOLD = 55
-STOI_THRESHOLD = 0.98
-C50_THRESHOLD = 59.75
-SI_SDR_THRESHOLD = 27.4
+PESQ_THRESHOLD = 2.5
+SNR_THRESHOLD = 42
+STOI_THRESHOLD = 0.95
+C50_THRESHOLD = 50
+SI_SDR_THRESHOLD = 20
 
 def main():
     project_root = os.path.dirname(os.path.abspath(__file__))
