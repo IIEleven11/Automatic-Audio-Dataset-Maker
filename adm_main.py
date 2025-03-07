@@ -20,6 +20,7 @@ import pandas as pd
 from tqdm import tqdm
 import soundfile as sf
 from pathlib import Path
+from datasets import Dataset
 from pydub import AudioSegment
 import tools.constants as constants
 from datasets.table import embed_table_storage
@@ -475,13 +476,11 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
 def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
     import gc
     print("Running initial processing...")
-    dataspeech_dir = os.path.join(PROJECT_ROOT, "dataspeech", "dataspeech", "main.py")
+    dataspeech_dir = os.path.join(PROJECT_ROOT, "dataspeech", "main.py")
     env = os.environ.copy()
     
-    # Add preprocessing to ensure text data is valid
     def preprocess_dataset():
         try:
-            # Load dataset in streaming mode to handle large datasets
             dataset = load_dataset(COMBINED_USERNAME_REPOID, streaming=True)
             
             # Function to ensure text is valid string
@@ -494,7 +493,6 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
                     example['text'] = text
                 return example
             
-            # Process the dataset in smaller chunks
             def process_in_chunks(dataset, chunk_size=1000):
                 processed_chunks = []
                 current_chunk = []
@@ -506,21 +504,18 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
                         processed_chunks.append(current_chunk)
                         current_chunk = []
                         
-                        # Free up memory
                         gc.collect()
                         if torch.cuda.is_available():
                             torch.cuda.empty_cache()
                 
-                if current_chunk:  # Don't forget the last chunk
+                if current_chunk:
                     processed_chunks.append(current_chunk)
                 
                 return processed_chunks
 
             # Process the dataset in chunks
             chunks = process_in_chunks(dataset)
-            
-            # Create a new dataset from the processed chunks
-            from datasets import Dataset
+
             
             processed_dataset = Dataset.from_dict({
                 key: [example[key] for chunk in chunks for example in chunk]
@@ -567,7 +562,16 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
         # Function to safely resample audio
         def resample_audio(example):
             try:
+                # First check if audio exists and has the expected structure
+                if 'audio' not in example:
+                    logger.warning("No audio field found in example")
+                    return example
+                
                 audio = example['audio']
+                if not isinstance(audio, dict) or 'array' not in audio or 'sampling_rate' not in audio:
+                    logger.warning("Audio field has unexpected structure")
+                    return example
+                
                 if audio['sampling_rate'] != sample_rate:
                     # Load audio data
                     audio_data = audio['array']
