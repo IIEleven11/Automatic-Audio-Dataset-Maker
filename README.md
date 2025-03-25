@@ -27,9 +27,10 @@ Automatic Audio Dataset Maker is a tool designed to automate the creation and cu
 
 ## Installation
 -NOTE: Theres a package conflict on windows machines with pesq/brouhaha. I suggest using WSL/Linux instead.
-1. conda create -n audiodatasetmaker python==3.10
-2. conda activate audiodatasetmaker
-3. pip install -r requirements.txt
+  Switching from conda to UV. I suggest you do the same. 
+1. uv venv --python 3.10
+2. source ./venv/bin/activate
+3. uv pip install -r requirements.txt
 4. Install git-lifs
    - Linux (Ubuntu): sudo apt-get install git-lfs 
    - Windows: https://git-lfs.com/ download then:  git lfs install 
