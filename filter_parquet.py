@@ -2,11 +2,10 @@
 import glob
 import pandas as pd
 import os
-PESQ_THRESHOLD = 2.5
-SNR_THRESHOLD = 42
-STOI_THRESHOLD = 0.95
-C50_THRESHOLD = 50
-SI_SDR_THRESHOLD = 20
+
+SNR_THRESHOLD = 45.0
+C50_THRESHOLD = 45.0
+
 
 def main():
     project_root = os.path.dirname(os.path.abspath(__file__))
@@ -29,11 +28,8 @@ def main():
         print(f"First few rows of {parquet_file}:")
         print(df.head())
         df_filtered = df[
-            (df['pesq'] > PESQ_THRESHOLD) &
             (df['snr'] > SNR_THRESHOLD) &
-            (df['stoi'] > STOI_THRESHOLD) &
-            (df['c50'] > C50_THRESHOLD) &
-            (df['si-sdr'] > SI_SDR_THRESHOLD)
+            (df['c50'] > C50_THRESHOLD)
         ]
         if df_filtered.empty:
             print(f"No rows passed the filters for {parquet_file}")
