@@ -173,6 +173,6 @@ UNFILTERED_PARQUET/*
 logs/*
 process_dataset.py
 getdataset.py
-/Mel-Band-Roformer-Vocal-Model
+MelBandRoformer.ckpt
 
 
