@@ -61,8 +61,8 @@ def process_parquet_files(input_dir, output_audio_dir, output_csv_dir):
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_dir = os.path.join(script_dir, 'FILTERED_PARQUET_AND_AUDIO')
-    output_audio_dir = os.path.join(script_dir, 'FILTERED_PARQUET_AND_AUDIO', 'FINAL_WAVS')
-    output_csv_dir = os.path.join(script_dir, 'FILTERED_PARQUET_AND_AUDIO', 'CSV')
+    input_dir = os.path.join(script_dir, 'FILTERED_PARQUET')
+    output_audio_dir = os.path.join(script_dir, 'FILTERED_PARQUET', 'FINAL_WAVS')
+    output_csv_dir = os.path.join(script_dir, 'FILTERED_PARQUET', 'CSV')
 
     process_parquet_files(input_dir, output_audio_dir, output_csv_dir)
