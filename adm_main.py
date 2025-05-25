@@ -63,7 +63,7 @@ def load_yaml_config(yaml_path):
     if 'audio_processing' not in config:
         config['audio_processing'] = {}
     if 'sample_rate' not in config['audio_processing']:
-        config['audio_processing']['sample_rate'] = 24000  # Default sample rate
+        config['audio_processing']['sample_rate'] = 22050  # Default sample rate
     return config
 
 
@@ -324,20 +324,20 @@ def segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR_PRE
             logger.warning(f'No subtitles found in {srt_file}. Skipping.')
             continue
 
-        # Load audio with librosa instead of pydub
+
         audio, sr = librosa.load(wav_file_path, sr=None)  # sr=None preserves original sample rate
         total_duration = librosa.get_duration(y=audio, sr=sr)
         durations = generate_gaussian_durations(total_duration)
         adjusted_segments = adjust_segments(subs, durations)
 
-        # Process and export audio segments
+
         for idx, segment in enumerate(adjusted_segments):
             start_sample = int(segment['start'] * sr)
             end_sample = int(segment['end'] * sr)
             audio_segment = audio[start_sample:end_sample]
             
-            # Add silence padding (400ms)
-            silence_samples = int(0.5 * sr)
+            # Add silence padding (1000ms)
+            silence_samples = int(2.0 * sr)
             padding = np.zeros(silence_samples)
             audio_segment = np.concatenate([audio_segment, padding])
             
@@ -451,7 +451,7 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
     try:
         logger.info(f"Creating dataset with {len(valid_df)} valid audio files...")
         dataset = DatasetDict.from_csv({"train": temp_csv_path}, delimiter="|")
-        dataset = dataset.cast_column("audio", Audio(sampling_rate=24000))
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=22050))
 
         logger.info("Pushing dataset to Hugging Face Hub...")
         dataset.push_to_hub(

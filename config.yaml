@@ -1,7 +1,7 @@
 # config.yaml
 huggingface:
   username: "IIEleven11"  # Your Hugging Face username
-  repo_name: "name" # Name for the repository
+  repo_name: "RepoName" # Name for the repository
   
 audio_processing:
   skip_transcription: false # true to skip audio transcription
@@ -10,9 +10,8 @@ audio_processing:
   skip_denoise_normalize: true  # deprecated
   sampling_rate: 24000
   refilter: false  # If true, this will skip transcription and all of the audio analyzing. Useful if your thresholds were too strict and you want to adjust and try again.
-  avoid_pitch_computation: true  # deprecated
 
 dataset:
   eval_percentage: 10   # Percentage of data for evaluation (normal ranges around 10-15%)
   speaker_name_option: "single"  # Can be "single" or "filename"
-  speaker_name: "somename"  # Only used if speaker_name_option is "single"
+  speaker_name: "someName"  # Only used if speaker_name_option is "single"
