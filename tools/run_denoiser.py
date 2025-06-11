@@ -3,7 +3,7 @@ import os
 
 def main():
     # Download the model file
-    download_cmd = "huggingface-cli download KimberleyJSN/melbandroformer --local-dir "./Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/models/mel_band_roformer"
+    download_cmd = "huggingface-cli download KimberleyJSN/melbandroformer --local-dir ./Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/models/mel_band_roformer
     subprocess.run(download_cmd, shell=True, check=True)
     
     # Rename downloaded file to expected name
