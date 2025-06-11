@@ -15,7 +15,7 @@ def main():
         os.makedirs("DENOISED")
     
     # Run the inference
-    inference_cmd = "python /Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/inference.py --config_path Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/configs/config_vocals_mel_band_roformer.yaml --model_path Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/models/mel_band_roformer/MelBandRoformer.ckpt --input_folder Automatic-Audio-Dataset-Maker/RAW_AUDIO --store_dir Automatic-Audio-Dataset-Maker/DENOISED"
+    inference_cmd = "python ./Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/inference.py --config_path ./Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/configs/config_vocals_mel_band_roformer.yaml --model_path ./Automatic-Audio-Dataset-Maker/tools/denoiser/Mel-Band-Roformer-Vocal-Model/models/mel_band_roformer/MelBandRoformer.ckpt --input_folder ./Automatic-Audio-Dataset-Maker/RAW_AUDIO --store_dir ./Automatic-Audio-Dataset-Maker/DENOISED"
     subprocess.run(inference_cmd, shell=True, check=True)
 
 if __name__ == "__main__":
