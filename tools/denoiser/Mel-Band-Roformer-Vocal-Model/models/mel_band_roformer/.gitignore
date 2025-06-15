@@ -173,16 +173,6 @@ UNFILTERED_PARQUET/*
 logs/*
 process_dataset.py
 getdataset.py
-<<<<<<< HEAD
-/Mel-Band-Roformer-Vocal-Model
-Cormier_Notebook
-DENOISED
-models
-SPEAKERS
-StyleTTS2FineTune/*
-RAW_AUDIO1
-=======
 MelBandRoformer.ckpt
 
 
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3

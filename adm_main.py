@@ -63,7 +63,11 @@ def load_yaml_config(yaml_path):
     if 'audio_processing' not in config:
         config['audio_processing'] = {}
     if 'sample_rate' not in config['audio_processing']:
+<<<<<<< HEAD
         config['audio_processing']['sample_rate'] = 24000  # Default sample rate
+=======
+        config['audio_processing']['sample_rate'] = 22050  # Default sample rate
+>>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
     return config
 
 
@@ -451,7 +455,11 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
     try:
         logger.info(f"Creating dataset with {len(valid_df)} valid audio files...")
         dataset = DatasetDict.from_csv({"train": temp_csv_path}, delimiter="|")
+<<<<<<< HEAD
         dataset = dataset.cast_column("audio", Audio(sampling_rate=24000))
+=======
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=22050))
+>>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
 
         logger.info("Pushing dataset to Hugging Face Hub...")
         dataset.push_to_hub(

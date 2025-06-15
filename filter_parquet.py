@@ -3,8 +3,13 @@ import glob
 import pandas as pd
 import os
 
+<<<<<<< HEAD
 SNR_THRESHOLD = 35.0
 C50_THRESHOLD = 35.0
+=======
+SNR_THRESHOLD = 45.0
+C50_THRESHOLD = 45.0
+>>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
 
 
 def main():

@@ -22,7 +22,7 @@ SPEAKER_LEVEL_PITCH_BINS = ["very low pitch", "quite low pitch", "slightly low p
 def visualize_bins_to_text(values_1, values_2, name_1, name_2, text_bins, save_dir, output_column_name, default_bins=100, lower_range=None):
     # Save both histograms into a single figure
     fig, axs = plt.subplots(2, figsize=(8,6), sharex=True)
-    
+
     # Plot histogram and vertical lines for subplot 1
     axs[0].hist(values_1, bins=default_bins, color='blue', alpha=0.7)
     _, bin_edges1 = np.histogram(values_1, bins=len(text_bins), range=(lower_range, values_1.max()) if lower_range else None)
@@ -64,7 +64,7 @@ def bins_to_text(dataset, text_bins, column_name, output_column_name, leading_sp
             for split in df:
                 if leading_split_for_bins is None or leading_split_for_bins in split:
                     values.extend(df[split][column_name])
-        
+
         # filter out outliers
         values = np.array(values)
         values = values[~np.isnan(values)]
@@ -74,14 +74,14 @@ def bins_to_text(dataset, text_bins, column_name, output_column_name, leading_sp
 
         if save_dir is not None:
             visualize_bins_to_text(values, filtered_values, "Before filtering", "After filtering", text_bins, save_dir, output_column_name, lower_range=lower_range)
-            
+
         # speaking_rate can easily have outliers
         if save_dir is not None and output_column_name=="speaking_rate":
             visualize_bins_to_text(filtered_values, filtered_values, "After filtering", "After filtering", text_bins, save_dir, f"{output_column_name}_after_filtering", lower_range=lower_range)
-        
+
         values = filtered_values
         hist, bin_edges = np.histogram(values, bins = len(text_bins), range=(lower_range, values.max()) if lower_range else None)
-        
+
         if only_save_plot:
             return dataset, bin_edges
     else:
@@ -95,7 +95,7 @@ def bins_to_text(dataset, text_bins, column_name, output_column_name, leading_sp
         return {
             output_column_name: batch_bins
         }
-    
+
     dataset = [df.map(batch_association, batched=True, batch_size=batch_size, input_columns=[column_name], num_proc=num_workers) for df in dataset]
     return dataset, bin_edges
 
@@ -110,7 +110,7 @@ def speaker_level_relative_to_gender(dataset, text_bins, speaker_column_name, ge
         for split in df:
             panda_data = df[split].remove_columns([col for col in df[split].column_names if col not in {speaker_column_name, column_name, gender_column_name}]).to_pandas()
             list_data.append(panda_data)
-        
+
     dataframe = pd.concat(list_data, ignore_index=True)
     dataframe = dataframe.groupby(speaker_column_name).agg({column_name: "mean", gender_column_name: "first"})
     if bin_edges is None:
@@ -129,7 +129,7 @@ def speaker_level_relative_to_gender(dataset, text_bins, speaker_column_name, ge
                 if save_dir is not None:
                     save_dict_afer_filtering[category] = values
             bin_edges[category] = np.histogram(values, len(text_bins))[1]
-        
+
         if save_dir is not None:
             visualize_bins_to_text(save_dict["male"], save_dict["female"], "Male distribution", "Female distribution", text_bins, save_dir, output_column_name)
             if std_tolerance is not None:
@@ -139,9 +139,9 @@ def speaker_level_relative_to_gender(dataset, text_bins, speaker_column_name, ge
             return dataset, bin_edges
     else:
         print(f"Already computed bin edges have been passed for {output_column_name}. Will use: {bin_edges}.")
-     
+
     speaker_id_to_bins = dataframe.apply(lambda x: np.searchsorted(bin_edges[x[gender_column_name]], x[column_name]), axis=1).to_dict()
-        
+
     def batch_association(batch):
         index_bins = [speaker_id_to_bins[speaker] for speaker in batch]
         # do min(max(...)) when values are outside of the main bins
@@ -150,16 +150,16 @@ def speaker_level_relative_to_gender(dataset, text_bins, speaker_column_name, ge
         return {
             output_column_name: batch_bins
         }
-        
-    
+
+
     dataset = [df.map(batch_association, batched=True, input_columns=[speaker_column_name], batch_size=batch_size, num_proc=num_workers) for df in dataset]
     return dataset, bin_edges
 
 if __name__ == "__main__":
     set_start_method("spawn")
     parser = argparse.ArgumentParser()
-    
-    
+
+
     parser.add_argument("dataset_name", type=str, help="Path or name of the dataset(s). If multiple datasets, names have to be separated by `+`.")
     parser.add_argument("--configuration", default=None, type=str, help="Dataset configuration(s) to use (or configuration separated by +).")
     parser.add_argument("--output_dir", default=None, type=str, help="If specified, save the dataset(s) on disk. If multiple datasets, paths have to be separated by `+`.")
@@ -187,17 +187,17 @@ if __name__ == "__main__":
     parser.add_argument("--sdr_std_tolerance", default=None, type=float, help="Used if `apply_squim_quality_estimation=True`. Standard deviation tolerance for SI-SDR estimation. Any value that is outside mean ± std * tolerance is discared. Only used if `path_to_bin_edges=False`.")
 
     args = parser.parse_args()
-    
+
     if args.plot_directory is None and args.only_save_plot:
         raise ValueError("`only_save_plot=true` but `plot_directory` is not specified. Please give a path to the directory where you want the plot to be saved.")
     if args.only_save_plot and args.path_to_bin_edges:
         raise ValueError("`only_save_plot=true` but `path_to_bin_edges` is specified. Since the latter is specified, we won't redo computations that would have been used for plotting. Chose one ar another. Note that if you use this script to label a new dataset for fine-tuning, I'd recommend avoiding plotting and set `only_save_plot=false`")
-        
+
     text_bins_dict = {}
     if args.path_to_text_bins:
         with open(args.path_to_text_bins) as json_file:
             text_bins_dict = json.load(json_file)
-            
+
     bin_edges_dict = {}
     if args.path_to_bin_edges:
         with open(args.path_to_bin_edges) as json_file:
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     snr_bins = text_bins_dict.get("snr_bins", SNR_BINS)
     reverberation_bins = text_bins_dict.get("reverberation_bins", REVERBERATION_BINS)
     utterance_level_std = text_bins_dict.get("utterance_level_std", UTTERANCE_LEVEL_STD)
-    
+
     if args.apply_squim_quality_estimation:
         sdr_bins = text_bins_dict.get("sdr_bins", SI_SDR_BINS)
         pesq_std = text_bins_dict.get("pesq_bins", PESQ_BINS)
@@ -221,7 +221,7 @@ if __name__ == "__main__":
             dataset_configs = args.configuration.split("+")
             if len(dataset_names) != len(dataset_configs):
                 raise ValueError(f"There are {len(dataset_names)} datasets spotted but {len(dataset_configs)} configuration spotted")
-            
+
             if args.repo_id is not None:
                 repo_ids = args.repo_id.split("+")
                 if len(dataset_names) != len(repo_ids):
@@ -231,7 +231,7 @@ if __name__ == "__main__":
                 output_dirs = args.output_dir.split("+")
                 if len(dataset_names) != len(output_dirs):
                     raise ValueError(f"There are {len(dataset_names)} datasets spotted but {len(output_dirs)} local paths on which to save the datasets spotted")
-            
+
             dataset = []
             for dataset_name, dataset_config in zip(dataset_names, dataset_configs):
                 tmp_dataset = load_dataset(dataset_name, dataset_config, num_proc=args.cpu_num_workers)
@@ -251,7 +251,7 @@ if __name__ == "__main__":
                 output_dirs = args.output_dir.split("+")
                 if len(dataset_names) != len(output_dirs):
                     raise ValueError(f"There are {len(dataset_names)} datasets spotted but {len(output_dirs)} local paths on which to save the datasets spotted")
-            
+
             dataset = []
             for dataset_name, dataset_config in zip(dataset_names):
                 tmp_dataset = load_dataset(dataset_name, num_proc=args.cpu_num_workers)
@@ -262,7 +262,7 @@ if __name__ == "__main__":
 
     if args.plot_directory:
         Path(args.plot_directory).mkdir(parents=True, exist_ok=True)
-    
+
     if not args.avoid_pitch_computation:
         bin_edges = None
         if "pitch_bins_male" in bin_edges_dict and "pitch_bins_female" in bin_edges_dict:
@@ -271,6 +271,9 @@ if __name__ == "__main__":
         dataset, pitch_bin_edges = speaker_level_relative_to_gender(dataset, speaker_level_pitch_bins, args.speaker_id_column_name, args.gender_column_name, "utterance_pitch_mean", "pitch", batch_size=args.batch_size, num_workers=args.cpu_num_workers, std_tolerance=args.pitch_std_tolerance, save_dir=args.plot_directory, only_save_plot=args.only_save_plot, bin_edges=bin_edges)
         
         # Only process speech monotony if pitch computation was performed
+        dataset, speech_monotony_bin_edges = bins_to_text(dataset, utterance_level_std, "utterance_pitch_std", "speech_monotony", batch_size=args.batch_size, num_workers=args.cpu_num_workers, leading_split_for_bins=args.leading_split_for_bins, std_tolerance=args.speech_monotony_std_tolerance, save_dir=args.plot_directory, only_save_plot=args.only_save_plot, bin_edges=bin_edges_dict.get("speech_monotony",None))
+
+        # Speech monotony analysis also requires pitch computation
         dataset, speech_monotony_bin_edges = bins_to_text(dataset, utterance_level_std, "utterance_pitch_std", "speech_monotony", batch_size=args.batch_size, num_workers=args.cpu_num_workers, leading_split_for_bins=args.leading_split_for_bins, std_tolerance=args.speech_monotony_std_tolerance, save_dir=args.plot_directory, only_save_plot=args.only_save_plot, bin_edges=bin_edges_dict.get("speech_monotony",None))
 
     dataset, speaking_rate_bin_edges = bins_to_text(dataset, speaker_rate_bins, "speaking_rate", "speaking_rate", batch_size=args.batch_size, num_workers=args.cpu_num_workers, leading_split_for_bins=args.leading_split_for_bins, std_tolerance=args.speaking_rate_std_tolerance, save_dir=args.plot_directory, only_save_plot=args.only_save_plot, bin_edges=bin_edges_dict.get("speaking_rate",None), lower_range=args.speaking_rate_lower_range)
@@ -288,16 +291,17 @@ if __name__ == "__main__":
             "reverberation": reverberation_bin_edges.tolist(),
         }
         if not args.avoid_pitch_computation:
+            bin_edges["speech_monotony"] = speech_monotony_bin_edges.tolist()
             bin_edges["pitch_bins_male"] = pitch_bin_edges["male"].tolist()
             bin_edges["pitch_bins_female"] = pitch_bin_edges["female"].tolist()
             bin_edges["speech_monotony"] = speech_monotony_bin_edges.tolist()
         if args.apply_squim_quality_estimation:
             bin_edges["si-sdr"] = sdr_bin_edges.tolist()
             bin_edges["pesq"] = pesq_bin_edges.tolist()
-        
-        with open(args.save_bin_edges, "w") as outfile: 
+
+        with open(args.save_bin_edges, "w") as outfile:
             json.dump(bin_edges, outfile)
-        
+
     if not args.only_save_plot:
         if args.output_dir:
             for output_dir, df in zip(output_dirs, dataset):
