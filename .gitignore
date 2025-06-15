@@ -174,5 +174,9 @@ logs/*
 process_dataset.py
 getdataset.py
 /Mel-Band-Roformer-Vocal-Model
-
-
+Cormier_Notebook
+DENOISED
+models
+SPEAKERS
+StyleTTS2FineTune/*
+RAW_AUDIO1

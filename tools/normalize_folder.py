@@ -1,17 +1,15 @@
 import os
 import numpy as np
 import soundfile as sf
-from pydub import AudioSegment
-from pydub.effects import normalize
 import pyloudnorm as pyln
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
-from tools.constants import WAVS_DIR_POSTDENOISE, WAVS_DIR_PREDENOISE
+import traceback
+
 
 def normalize_audio(input_file, output_file, target_loudness=-23.0):
     audio, sample_rate = sf.read(input_file)
 
-    # Convert to float32 if not already
     if audio.dtype != np.float32:
         audio = audio.astype(np.float32)
 
@@ -24,7 +22,6 @@ def normalize_audio(input_file, output_file, target_loudness=-23.0):
     max_amplitude = np.max(np.abs(loudness_normalized_audio))
     peak_normalized_audio = loudness_normalized_audio / max_amplitude * 0.9  # -1 dB is approximately 0.9
 
-    # Save normalized audio
     sf.write(output_file, peak_normalized_audio, sample_rate)
 
 
@@ -33,10 +30,11 @@ def process_file(input_file, output_file):
         normalize_audio(input_file, output_file)
         return f"Processed: {input_file}"
     except Exception as e:
-        return f"Error processing {input_file}: {str(e)}"
+        tb = traceback.format_exc()
+        return f"Error processing {input_file}: {str(e)}\n{tb}"
 
 
-def process_directory(input_dir, output_dir, num_workers=os.cpu_count()):
+def process_directory(input_dir, output_dir, num_workers=1):  # Set to 1 for minimal memory usage
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -54,9 +52,9 @@ def process_directory(input_dir, output_dir, num_workers=os.cpu_count()):
 
 
 if __name__ == "__main__":
-    input_dir = WAVS_DIR_PREDENOISE
-    output_dir = WAVS_DIR_POSTDENOISE
+    input_dir = "../Automatic-Audio-Dataset-Maker/WAVS1"
+    output_dir = "../Automatic-Audio-Dataset-Maker/WAVS"
     
     print("Starting audio normalization process...")
-    process_directory(WAVS_DIR_PREDENOISE, WAVS_DIR_POSTDENOISE)
+    process_directory(input_dir, output_dir, num_workers=1)  # Try 1 or 2
     print("Audio normalization complete!")

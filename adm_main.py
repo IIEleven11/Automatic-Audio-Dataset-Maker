@@ -1,13 +1,10 @@
 import os
-import re
 import gc
-import csv
-import json
 import time
 import yaml
 import torch
 import pysrt
-import shutil
+import librosa
 import asyncio
 import whisper
 import logging
@@ -21,10 +18,8 @@ from tqdm import tqdm
 import soundfile as sf
 from pathlib import Path
 from datasets import Dataset
-from pydub import AudioSegment
 import tools.constants as constants
 from datasets.table import embed_table_storage
-from datasets.features.features import require_decoding
 from datasets.utils.py_utils import convert_file_size_to_int
 from datasets import load_dataset, Audio, load_from_disk, DatasetDict
 
@@ -68,7 +63,7 @@ def load_yaml_config(yaml_path):
     if 'audio_processing' not in config:
         config['audio_processing'] = {}
     if 'sample_rate' not in config['audio_processing']:
-        config['audio_processing']['sample_rate'] = 22050  # Default sample rate
+        config['audio_processing']['sample_rate'] = 24000  # Default sample rate
     return config
 
 
@@ -236,7 +231,7 @@ def segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR_PRE
         return subs
 
 
-    def generate_gaussian_durations(total_duration, min_length=2, max_length=18):
+    def generate_gaussian_durations(total_duration, min_length=1.5, max_length=10):
         """Generate segment durations following a truncated Gaussian distribution."""
         mean = (min_length + max_length) / 2
         std_dev = (max_length - min_length) / 6
@@ -296,14 +291,14 @@ def segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR_PRE
             
             while i < num_subs:
                 current_segment['text'] += ' ' + subs[i]['text']
-                current_segment['end'] = min(subs[i]['end'], start_time + 18)  # force max duration
+                current_segment['end'] = min(subs[i]['end'], start_time + 10)  # force max duration
                 
-                if subs[i]['end'] >= target_end_time or current_segment['end'] - current_segment['start'] >= 18:
+                if subs[i]['end'] >= target_end_time or current_segment['end'] - current_segment['start'] >= 10:
                     break
                 i += 1
                 
             segment_duration = current_segment['end'] - current_segment['start']
-            if 2 <= segment_duration <= 18:
+            if 1.5 <= segment_duration <= 10:
                 current_segment['text'] = current_segment['text'].strip()
                 adjusted_segments.append(current_segment)
 
@@ -329,19 +324,26 @@ def segment_audio_and_create_metadata(SRT_DIR_PATH, AUDIO_DIR_PATH, WAVS_DIR_PRE
             logger.warning(f'No subtitles found in {srt_file}. Skipping.')
             continue
 
-        audio = AudioSegment.from_wav(wav_file_path)
-        total_duration = len(audio) / 1000.0  # Convert to seconds
+
+        audio, sr = librosa.load(wav_file_path, sr=None)  # sr=None preserves original sample rate
+        total_duration = librosa.get_duration(y=audio, sr=sr)
         durations = generate_gaussian_durations(total_duration)
         adjusted_segments = adjust_segments(subs, durations)
 
-        # Process and export audio segments
+
         for idx, segment in enumerate(adjusted_segments):
-            start_ms = segment['start'] * 1000
-            end_ms = segment['end'] * 1000
-            audio_segment = audio[start_ms:end_ms]
+            start_sample = int(segment['start'] * sr)
+            end_sample = int(segment['end'] * sr)
+            audio_segment = audio[start_sample:end_sample]
+            
+            # Add silence padding (1000ms)
+            silence_samples = int(2.0 * sr)
+            padding = np.zeros(silence_samples)
+            audio_segment = np.concatenate([audio_segment, padding])
+            
             output_filename = f"{base_name}_{idx+1}.wav"
             output_path = os.path.join(WAVS_DIR_PREDENOISE, output_filename)
-            audio_segment.export(output_path, format="wav")
+            sf.write(output_path, audio_segment, sr)
             
             metadata_entries.append({
                 'audio': output_path,
@@ -377,15 +379,15 @@ def save_dataset_to_parquet(dataset_dict, data_dir, sample_rate):
     for split_name, dataset in dataset_dict.items():
         # Not sure if I will need this. I will leave it here for now.
         dataset = dataset.cast_column("audio", Audio(sampling_rate=sample_rate))
-        
+        '''
         decodable_columns = [
             k for k, v in dataset.features.items() if require_decoding(v, ignore_decode_attribute=True)
-        ]
+        ]'''
         dataset_nbytes = dataset._estimate_nbytes()
         max_shard_size = convert_file_size_to_int('500MB')
         num_shards = int(dataset_nbytes / max_shard_size) + 1
         num_shards = max(num_shards, 1)
-
+        
         shards = (
             dataset.shard(num_shards=num_shards, index=i, contiguous=True) for i in range(num_shards)
         )
@@ -449,7 +451,7 @@ def create_and_push_dataset(CSV_FILE_PATH, COMBINED_USERNAME_REPOID):
     try:
         logger.info(f"Creating dataset with {len(valid_df)} valid audio files...")
         dataset = DatasetDict.from_csv({"train": temp_csv_path}, delimiter="|")
-        dataset = dataset.cast_column("audio", Audio(sampling_rate=22050))
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=24000))
 
         logger.info("Pushing dataset to Hugging Face Hub...")
         dataset.push_to_hub(
@@ -545,7 +547,7 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
         "--cpu_num_workers", "1",
         "--repo_id", REPO_NAME,
         "--rename_column",
-        "--apply_squim_quality_estimation"
+        "--avoid_pitch_computation",
     ]
     
     try:
@@ -634,7 +636,7 @@ def run_initial_processing(COMBINED_USERNAME_REPOID, REPO_NAME, sample_rate):
             return False
         
     except subprocess.CalledProcessError as e:
-        logger.error(f"An error occurred during initial processing:")
+        logger.error("An error occurred during initial processing:")
         logger.error(f"Command: {' '.join(e.cmd)}")
         logger.error(f"Return code: {e.returncode}")
         logger.error(f"Output: {e.output if hasattr(e, 'output') else 'No output'}")
@@ -661,7 +663,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         "--cpu_num_workers", "1",
         "--save_bin_edges", bin_edges_path,
         "--avoid_pitch_computation",
-        "--apply_squim_quality_estimation",
+        # "--apply_squim_quality_estimation",
         "--output_dir", UNFILTERED_PARQUET_DIR,
         "--speaker_id_column_name", speaker_name,
     ]
@@ -679,7 +681,7 @@ def run_metadata_to_text(COMBINED_USERNAME_REPOID, REPO_NAME, bin_edges_path, te
         return dataset
 
     except subprocess.CalledProcessError as e:
-        logger.error(f"An error occurred during metadata to text processing:")
+        logger.error("An error occurred during metadata to text processing:")
         logger.error(f"Command: {' '.join(e.cmd)}")
         logger.error(f"Return code: {e.returncode}")
         logger.error(f"Output: {e.output if hasattr(e, 'output') else 'No output'}")
@@ -701,7 +703,7 @@ def filter_parquet_files(UNFILTERED_PARQUET_DIR):
             logger.info("Filtering completed successfully.")
             return True
     except subprocess.CalledProcessError as e:
-        logger.error(f"An error occurred during filtering:")
+        logger.error("An error occurred during filtering:")
         logger.error(f"Command: {e.cmd}")
         logger.error(f"Return code: {e.returncode}")
         logger.error(f"Output: {e.stdout}")
@@ -829,7 +831,6 @@ async def main():
     
     USER_INPUTS = collect_USER_INPUTS(args.config if args.config else None)
     AUDIO_DIR_PATH = os.path.join(PROJECT_ROOT, "RAW_AUDIO")
-    JSON_DIR_PATH = os.path.join(PROJECT_ROOT, "JSON_DIR_PATH")
     SRT_DIR_PATH = os.path.join(PROJECT_ROOT, "SRTS")
     WAVS_DIR = os.path.join(PROJECT_ROOT, "WAVS")
     PARENT_CSV = os.path.join(PROJECT_ROOT, "PARENT_CSV")

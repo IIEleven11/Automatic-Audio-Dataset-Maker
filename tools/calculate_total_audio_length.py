@@ -5,7 +5,7 @@ import wave
 from datetime import timedelta
 from tqdm import tqdm
 
-target = "/AudioDatasetMaker/WAVS_DIR_PREDENOISE" # Change this path if you need to
+target = "../Automatic-Audio-Dataset-Maker/FILTERED_PARQUET/FINAL_WAVS" # Change this path if you need to
 
 
 def get_audio_duration(file_path):
@@ -41,7 +41,7 @@ def calculate_total_duration():
     minutes = (duration_timedelta.seconds % 3600) // 60
     seconds = duration_timedelta.seconds % 60
     
-    print(f"\nTotal audio duration:")
+    print("\nTotal audio duration:")
     print(f"Hours: {hours}")
     print(f"Minutes: {minutes}")
     print(f"Seconds: {seconds}")
