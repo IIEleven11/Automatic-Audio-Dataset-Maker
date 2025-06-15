@@ -1,35 +1,17 @@
 # config.yaml
 huggingface:
   username: "IIEleven11"  # Your Hugging Face username
-<<<<<<< HEAD
-  repo_name: "JO_DATASET" # Name for the repository
-=======
   repo_name: "RepoName" # Name for the repository
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
   
 audio_processing:
   skip_transcription: false # true to skip audio transcription
   transcription_method: 1    # 1 for local Whisper, 2 for Deepgram API
   num_gpus: null            # number of GPUs to use (null for all available)
-<<<<<<< HEAD
-  skip_denoise_normalize: true  # true to skip denoising and normalizing
-  sampling_rate: 24000
-  refilter: false # if true, this will skip transcription and all of the audio analyzing. Useful if your thresholds were too strict and you want to adjust and try again.
-  avoid_pitch_computation: true 
-=======
   skip_denoise_normalize: true  # deprecated
   sampling_rate: 24000
   refilter: false  # If true, this will skip transcription and all of the audio analyzing. Useful if your thresholds were too strict and you want to adjust and try again.
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
 
 dataset:
   eval_percentage: 10   # Percentage of data for evaluation (normal ranges around 10-15%)
   speaker_name_option: "single"  # Can be "single" or "filename"
-<<<<<<< HEAD
-  speaker_name: "JO"  # Only used if speaker_name_option is "single"
-
-
-
-=======
   speaker_name: "someName"  # Only used if speaker_name_option is "single"
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
