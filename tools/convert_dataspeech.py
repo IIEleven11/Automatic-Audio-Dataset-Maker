@@ -58,19 +58,16 @@ def process_parquet_files(input_dir, output_audio_dir, output_csv_dir):
                         with wave.open(bytes_io, 'rb') as wav_bytes:
                             wav_file.setparams(wav_bytes.getparams())
                             wav_file.writeframes(wav_bytes.readframes(wav_bytes.getnframes()))
-<<<<<<< HEAD
-=======
-            else:
-                audio_path = audio_data['path']
-                new_filename = os.path.basename(audio_path)
-                new_audio_path = os.path.join(output_audio_dir, new_filename)
-                shutil.copy2(audio_path, new_audio_path)
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
+        else:
+            audio_path = audio_data['path']
+            new_filename = os.path.basename(audio_path)
+            new_audio_path = os.path.join(output_audio_dir, new_filename)
+            shutil.copy2(audio_path, new_audio_path)
 
-            all_data.append({
-                'audio': os.path.relpath(new_audio_path, start=os.path.dirname(output_csv_dir)),
-                'text': text
-            })
+        all_data.append({
+            'audio': os.path.relpath(new_audio_path, start=os.path.dirname(output_csv_dir)),
+            'text': text
+        })
             
     final_df = pd.DataFrame(all_data)
 
@@ -81,15 +78,8 @@ def process_parquet_files(input_dir, output_audio_dir, output_csv_dir):
     print(f"CSV file saved to {csv_path}")
 
 if __name__ == "__main__":
-<<<<<<< HEAD
     input_dir = "../Automatic-Audio-Dataset-Maker/FILTERED_PARQUET"
     output_audio_dir = "../Automatic-Audio-Dataset-Maker/FILTERED_PARQUET" + "/FINAL_WAVS"
     output_csv_dir = "../Automatic-Audio-Dataset-Maker/FILTERED_PARQUET" + "/CSV"
-=======
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_dir = os.path.join(script_dir, 'FILTERED_PARQUET')
-    output_audio_dir = os.path.join(script_dir, 'FILTERED_PARQUET', 'FINAL_WAVS')
-    output_csv_dir = os.path.join(script_dir, 'FILTERED_PARQUET', 'CSV')
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
 
     process_parquet_files(input_dir, output_audio_dir, output_csv_dir)

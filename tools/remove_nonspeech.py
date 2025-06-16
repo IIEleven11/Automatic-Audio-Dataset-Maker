@@ -3,10 +3,7 @@ import wave
 import contextlib
 import webrtcvad
 import numpy as np
-<<<<<<< HEAD
 import librosa
-=======
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
 from pathlib import Path
 from pydub import AudioSegment
 import array
@@ -30,7 +27,6 @@ def frame_generator(frame_duration_ms, audio, sample_rate):
         yield audio[offset:offset + n]
         offset += n
 
-<<<<<<< HEAD
 def is_music(audio_segment, sr=22050, threshold=0.5):
     """Detect if a segment is music based on spectral features."""
     # Convert AudioSegment to numpy array for librosa
@@ -104,52 +100,6 @@ def process_audio(input_path, output_path, aggressiveness=2):
             channels=1
         )
         
-=======
-def process_audio(input_path, output_path, aggressiveness=2):
-    """Process audio file to remove non-speech segments."""
-    # Read the audio file
-    audio = AudioSegment.from_wav(input_path)
-    
-    # Convert to mono and 16kHz if necessary
-    if audio.channels > 1:
-        audio = audio.set_channels(1)
-    if audio.frame_rate != 16000:
-        audio = audio.set_frame_rate(16000)
-    
-    # Convert to PCM data
-    pcm_data = array.array('h', audio.raw_data)
-    pcm_data = np.array(pcm_data, dtype=np.int16).tobytes()
-    
-    # Initialize VAD
-    vad = webrtcvad.Vad(aggressiveness)
-    
-    # Process in frames
-    frame_duration_ms = 30
-    frames = frame_generator(frame_duration_ms, pcm_data, 16000)
-    speech_frames = []
-    
-    # Detect speech frames
-    for frame in frames:
-        if len(frame) < 960:  # Skip frames that are too short
-            continue
-        is_speech = vad.is_speech(frame, 16000)
-        if is_speech:
-            speech_frames.append(frame)
-    
-    # Combine speech frames
-    if speech_frames:
-        speech_audio = b''.join(speech_frames)
-        
-        # Convert back to AudioSegment
-        speech_segment = AudioSegment(
-            data=speech_audio,
-            sample_width=2,
-            frame_rate=16000,
-            channels=1
-        )
-        
-        # Export the result
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
         speech_segment.export(output_path, format="wav")
         return True
     return False
@@ -163,15 +113,8 @@ def main():
     
     args = parser.parse_args()
     
-<<<<<<< HEAD
     os.makedirs(args.output_dir, exist_ok=True)
     
-=======
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Get all wav files
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
     wav_files = list(Path(args.input_dir).glob('*.wav'))
     
     print(f"\nProcessing Configuration:")
