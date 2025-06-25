@@ -1,8 +1,8 @@
 # config.yaml
 huggingface:
   username: "IIEleven11"  # Your Hugging Face username
-  repo_name: "RepoName" # Name for the repository
-  
+  repo_name: "xhosa_audiobooks" # Name for the repository
+
 audio_processing:
   skip_transcription: false # true to skip audio transcription
   transcription_method: 1    # 1 for local Whisper, 2 for Deepgram API
@@ -10,8 +10,9 @@ audio_processing:
   skip_denoise_normalize: true  # deprecated
   sampling_rate: 24000
   refilter: false  # If true, this will skip transcription and all of the audio analyzing. Useful if your thresholds were too strict and you want to adjust and try again.
+  whisper_model: "TheirStory/whisper-small-xhosa"  # Hugging Face model for Xhosa transcription
 
 dataset:
   eval_percentage: 10   # Percentage of data for evaluation (normal ranges around 10-15%)
   speaker_name_option: "single"  # Can be "single" or "filename"
-  speaker_name: "someName"  # Only used if speaker_name_option is "single"
+  speaker_name: "xhosa"  # Only used if speaker_name_option is "single"

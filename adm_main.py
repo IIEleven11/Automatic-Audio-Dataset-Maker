@@ -6,7 +6,6 @@ import torch
 import pysrt
 import librosa
 import asyncio
-import whisper
 import logging
 import datetime
 import argparse
@@ -22,6 +21,7 @@ import tools.constants as constants
 from datasets.table import embed_table_storage
 from datasets.utils.py_utils import convert_file_size_to_int
 from datasets import load_dataset, Audio, load_from_disk, DatasetDict
+from transformers import pipeline
 
 
 os.makedirs('logs', exist_ok=True)
@@ -162,50 +162,86 @@ def format_time(seconds):
 
 
 #MARK: Transcribe with Whisper
-def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None):
+def transcribe_with_whisper(audio_file_path, output_dir, num_gpus=None, config=None):
     """
-    Transcribe audio using local Whisper model.
+    Transcribe audio using Hugging Face Whisper pipeline for Xhosa.
     Skip if SRT file already exists.
     """
     # Check if SRT file already exists
     base_name = os.path.splitext(os.path.basename(audio_file_path))[0]
     srt_file_path = os.path.join(output_dir, f"{base_name}.srt")
-    
+
     if os.path.exists(srt_file_path):
         logger.info(f"SRT file already exists for {base_name}, skipping transcription...")
         return True
-        
+
     try:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = whisper.load_model("turbo").to(device)
-        if device == "cuda":
-            torch.cuda.empty_cache()
-            torch.backends.cudnn.benchmark = True
-        result = model.transcribe(
-            audio_file_path,
-            language="en",
-            word_timestamps=True,
-            verbose=True,
-            fp16=(device == "cuda") 
+        device = 0 if torch.cuda.is_available() else "cpu"
+
+        # Get model from config, with fallback
+        if config and 'audio_processing' in config:
+            model_name = config['audio_processing'].get('whisper_model', 'TheirStory/whisper-small-xhosa')
+        else:
+            model_name = 'TheirStory/whisper-small-xhosa'
+
+        logger.info(f"Loading Whisper pipeline: {model_name} (fine-tuned for Xhosa)")
+
+        # Create the pipeline using the same approach as the working example
+        pipe = pipeline(
+            task="automatic-speech-recognition",
+            model=model_name,
+            chunk_length_s=30,  # Process long audio in 30-second chunks
+            device=device,
         )
+
+        logger.info(f"Successfully loaded pipeline")
+
+        # Transcribe the audio file
+        logger.info(f"Transcribing audio file: {audio_file_path}")
+        result = pipe(
+            audio_file_path,
+            batch_size=8,
+            generate_kwargs={"task": "transcribe"},
+            return_timestamps=True
+        )
+
+        # Extract text and timestamps
+        transcription_text = result["text"]
+        chunks = result.get("chunks", [])
+
+        logger.info(f"Transcription completed. Text: {transcription_text[:100]}...")
+
+        # Create SRT content
         srt_content = ""
-        for i, segment in enumerate(result["segments"], 1):
-            start_time = format_time(segment["start"])
-            end_time = format_time(segment["end"])
-            text = segment["text"].strip()
-            srt_content += f"{i}\n{start_time} --> {end_time}\n{text}\n\n"
-            
+        if chunks:
+            # If we have chunks with timestamps, use them
+            for i, chunk in enumerate(chunks, 1):
+                start_time = format_time(chunk["timestamp"][0] if chunk["timestamp"][0] is not None else 0)
+                end_time = format_time(chunk["timestamp"][1] if chunk["timestamp"][1] is not None else 30)
+                text = chunk["text"].strip()
+                srt_content += f"{i}\n{start_time} --> {end_time}\n{text}\n\n"
+        else:
+            # Fallback: create a single segment for the entire audio
+            # Get audio duration
+            audio_data, sample_rate = librosa.load(audio_file_path, sr=None)
+            audio_duration = len(audio_data) / sample_rate
+            start_time = format_time(0)
+            end_time = format_time(audio_duration)
+            srt_content = f"1\n{start_time} --> {end_time}\n{transcription_text.strip()}\n\n"
+
         with open(srt_file_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
-            
+
         logger.info(f"Transcription saved to {srt_file_path}")
-        
-        if device == "cuda":
+
+        # Clean up GPU memory
+        if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
         return True
     except Exception as e:
         logger.error(f"Error transcribing {audio_file_path}: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 
 
@@ -873,7 +909,7 @@ async def main():
                 tqdm.write(f"Skipping {base_name} - SRT file already exists")
                 continue
 
-            transcribe_with_whisper(audio_file, SRT_DIR_PATH, num_gpus=USER_INPUTS['NUM_GPUS'])
+            transcribe_with_whisper(audio_file, SRT_DIR_PATH, num_gpus=USER_INPUTS['NUM_GPUS'], config=config)
 
         logger.info("Step 1 completed: Audio transcription finished")
 
