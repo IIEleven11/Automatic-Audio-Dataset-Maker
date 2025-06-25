@@ -286,7 +286,7 @@ numba==0.60.0
     #   -r requirements.txt
     #   librosa
     #   openai-whisper
-numpy==1.24.0
+numpy==1.24.4
     # via
     #   -r requirements.txt
     #   accelerate
@@ -438,7 +438,7 @@ protobuf==6.30.1
     #   tensorboardx
 psutil==7.0.0
     # via accelerate
-pyannote-audio==3.2.0
+pyannote-audio==3.3.0
     # via brouhaha
 pyannote-core==5.0.0
     # via
