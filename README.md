@@ -1,8 +1,5 @@
-# Audio Dataset Maker
-Curating datasets is extremely time consuming and tedious. I needed a way to automate this process as much as possible. 
-
 # Automatic Audio Dataset Maker
-
+Curating datasets is extremely time consuming and tedious. I needed a way to automate this process as much as possible. 
 Automatic Audio Dataset Maker is a tool designed to automate the creation and curation of high-quality audio datasets, primarily for training text-to-speech models.
 
 ## Key Features
