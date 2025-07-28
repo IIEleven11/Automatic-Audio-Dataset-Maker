@@ -34,7 +34,7 @@ Automatic Audio Dataset Maker is a tool designed to automate the creation and cu
 6. Set HUGGINGFACE_TOKEN environment variable within your OS.
 8. In your terminal login to Hugging Face Hub by typing: ```huggingface-cli login```
 
-<<<<<<< HEAD
+
 ## Usage
 1. Put your audio files in the RAW_AUDIO folder. They should be 24000hz, mono, and 16bit PCM. (These are not absolute values. I am just setting something as a default for any beginners to follow)
 2. Setup config.yaml with your options then 
@@ -65,26 +65,20 @@ Automatic Audio Dataset Maker is a tool designed to automate the creation and cu
 10. Change the refilter parameter in the config.yaml to true.
 11. Run the adm_main.py script again.
    - Repeat refiltering as needed.
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
 
    #### Note: 
       - If you set tight thresholds and the data was too heavily filtered you can turn on the refilter option in the config.yaml. This will skip the transcription and audio analysis steps.
       - The tools folder contains several scripts you can use. Things like denoising, converting a parquet to wavs/csv, etc.
-<<<<<<< HEAD
       - Step 1 (transcription) using local whisperASR.
         This process will filter out any data it deems as not suitable for training. I suggest doing any denoising or editing of the audio before hand.
       - You can choose to skip the transcription step if you have your own.
       - Analyzing and computing the audio metrics can be a bit GPU intensive. My RTX 3090 can handle a few hours of data without a problem. I could see less capable hardware failing during this step.
       -  You will end up with .parquet file containing a **curated** dataset including audio data. This will be on the huggingface hub under your username/repository name. As well as saved locally in the FILTERED_PARQUET folder.
       -  There us a script in the tools folder ```convert_dataspeech.py``` you can input the correct paths and run it to automatically convert the parquet file/s into metadata and get the wavs in a folder.
-
-
-=======
       - You can choose to skip the transcription step if you have your own.
       - Analyzing and computing the audio metrics can be a bit GPU intensive. My RTX 3090 can handle a few hours of data without a problem. I could see less capable hardware failing during this step.
       -  You will end up with .parquet file containing a **curated** dataset including audio data. This will be saved locally in the FILTERED_PARQUET folder.
 
->>>>>>> 56f0673ad2084b8d03c5402f657231a67a2b75f3
 ## If you install the Data Wrangler Extension within VsCode you can view the final parquet and it will look something like this.
 ![image](https://github.com/user-attachments/assets/b8690113-4a25-4582-8868-95afc5b2a061)
 
