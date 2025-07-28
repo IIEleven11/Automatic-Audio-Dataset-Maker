@@ -73,11 +73,10 @@ Automatic Audio Dataset Maker is a tool designed to automate the creation and cu
         This process will filter out any data it deems as not suitable for training. I suggest doing any denoising or editing of the audio before hand.
       - You can choose to skip the transcription step if you have your own.
       - Analyzing and computing the audio metrics can be a bit GPU intensive. My RTX 3090 can handle a few hours of data without a problem. I could see less capable hardware failing during this step.
-      -  You will end up with .parquet file containing a **curated** dataset including audio data. This will be on the huggingface hub under your username/repository name. As well as saved locally in the FILTERED_PARQUET folder.
-      -  There us a script in the tools folder ```convert_dataspeech.py``` you can input the correct paths and run it to automatically convert the parquet file/s into metadata and get the wavs in a folder.
+      - You will end up with .parquet file/s containing a **curated** dataset including audio data. This will be saved locally in the FILTERED_PARQUET folder. 
+        (BUG the filtered parquet pushed to the hub is wrong. Just use the parquets in the filtered folder until I can get around to fixing it.)
+      - There us a script in the tools folder ```convert_dataspeech.py``` you can input the correct paths and run it to automatically convert the parquet file/s into metadata and get the wavs in a folder.
       - You can choose to skip the transcription step if you have your own.
-      - Analyzing and computing the audio metrics can be a bit GPU intensive. My RTX 3090 can handle a few hours of data without a problem. I could see less capable hardware failing during this step.
-      -  You will end up with .parquet file containing a **curated** dataset including audio data. This will be saved locally in the FILTERED_PARQUET folder.
 
 ## If you install the Data Wrangler Extension within VsCode you can view the final parquet and it will look something like this.
 ![image](https://github.com/user-attachments/assets/b8690113-4a25-4582-8868-95afc5b2a061)
