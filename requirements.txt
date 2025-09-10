@@ -50,7 +50,9 @@ audioread==3.0.1
     #   librosa
 bitsandbytes==0.45.3
     # via -r requirements.txt
-brouhaha @ https://github.com/marianne-m/brouhaha-vad/archive/main.zip
+numpy==2.0.2
+    # via -r requirements.txt
+brouhaha @ git+https://github.com/IIEleven11/brouhaha-vad-for-python3.12.git@main
     # via -r requirements.txt
 certifi==2024.8.30
     # via
@@ -286,36 +288,6 @@ numba==0.60.0
     #   -r requirements.txt
     #   librosa
     #   openai-whisper
-numpy==1.24.4
-    # via
-    #   -r requirements.txt
-    #   accelerate
-    #   asteroid-filterbanks
-    #   bitsandbytes
-    #   contourpy
-    #   datasets
-    #   librosa
-    #   matplotlib
-    #   numba
-    #   openai-whisper
-    #   openunmix
-    #   optuna
-    #   pandas
-    #   panphon
-    #   penn
-    #   pyannote-core
-    #   pyannote-metrics
-    #   pyloudnorm
-    #   pystoi
-    #   pytorch-metric-learning
-    #   scikit-learn
-    #   scipy
-    #   soxr
-    #   speechbrain
-    #   tensorboard
-    #   tensorboardx
-    #   torchmetrics
-    #   transformers
 nvidia-cublas-cu12==12.4.5.8
     # via
     #   -r requirements.txt
@@ -404,7 +376,7 @@ packaging==24.1
     #   torch-pitch-shift
     #   torchmetrics
     #   transformers
-pandas==2.2.3
+pandas
     # via
     #   -r requirements.txt
     #   datasets
@@ -438,8 +410,7 @@ protobuf==6.30.1
     #   tensorboardx
 psutil==7.0.0
     # via accelerate
-pyannote-audio==3.3.0
-    # via brouhaha
+pyannote-audio
 pyannote-core==5.0.0
     # via
     #   pyannote-audio
@@ -631,40 +602,10 @@ tokenizers==0.20.1
     # via
     #   -r requirements.txt
     #   transformers
-torch==2.5.1
-    # via
-    #   accelerate
-    #   asteroid-filterbanks
-    #   bitsandbytes
-    #   demucs
-    #   dora-search
-    #   julius
-    #   lightning
-    #   openai-whisper
-    #   openunmix
-    #   penn
-    #   pyannote-audio
-    #   pytorch-lightning
-    #   pytorch-metric-learning
-    #   speechbrain
-    #   torch-audiomentations
-    #   torch-pitch-shift
-    #   torchaudio
-    #   torchmetrics
-    #   torchutil
 torch-audiomentations==0.12.0
     # via pyannote-audio
 torch-pitch-shift==1.2.5
     # via torch-audiomentations
-torchaudio==2.5.1
-    # via
-    #   demucs
-    #   openunmix
-    #   penn
-    #   pyannote-audio
-    #   speechbrain
-    #   torch-audiomentations
-    #   torch-pitch-shift
 torchmetrics==1.7.0
     # via
     #   lightning
